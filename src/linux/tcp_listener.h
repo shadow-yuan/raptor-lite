@@ -19,37 +19,32 @@
 #ifndef __RAPTOR_CORE_LINUX_TCP_LISTENER__
 #define __RAPTOR_CORE_LINUX_TCP_LISTENER__
 
-#include "core/linux/epoll.h"
-#include "core/resolve_address.h"
-#include "core/service.h"
-#include "util/list_entry.h"
-#include "util/status.h"
-#include "util/sync.h"
-#include "util/thread.h"
+#include "src/linux/epoll.h"
+#include "src/common/resolve_address.h"
+#include "src/common/service.h"
+#include "src/utils/list_entry.h"
+#include "raptor-lite/utils/status.h"
+#include "raptor-lite/utils/sync.h"
+#include "raptor-lite/utils/thread.h"
 
 namespace raptor {
 struct ListenerObject;
 class TcpListener final {
 public:
-    explicit TcpListener(internal::IAcceptor* cp);
+    explicit TcpListener(internal::IAcceptor *cp);
     ~TcpListener();
 
-    RefCountedPtr<Status>
-        Init();
-    RefCountedPtr<Status>
-        AddListeningPort(const raptor_resolved_address* addr);
+    RefCountedPtr<Status> Init();
+    RefCountedPtr<Status> AddListeningPort(const raptor_resolved_address *addr);
     bool StartListening();
     void Shutdown();
 
 private:
-    void DoPolling(void* ptr);
-    void ProcessEpollEvents(void* ptr, uint32_t events);
-    int AcceptEx(
-        int fd,
-        raptor_resolved_address* addr,
-        int nonblock, int cloexec);
+    void DoPolling(void *ptr);
+    void ProcessEpollEvents(void *ptr, uint32_t events);
+    int AcceptEx(int fd, raptor_resolved_address *addr, int nonblock, int cloexec);
 
-    internal::IAcceptor* _acceptor; //not owned it
+    internal::IAcceptor *_acceptor;  // not owned it
     bool _shutdown;
 
     Thread _thd;
@@ -58,5 +53,5 @@ private:
     Mutex _mtex;
 };
 
-} // namespace raptor
+}  // namespace raptor
 #endif  // __RAPTOR_CORE_LINUX_TCP_LISTENER__

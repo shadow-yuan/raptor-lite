@@ -19,9 +19,9 @@
 #ifndef __RAPTOR_CORE_SOCKET_SETTING__
 #define __RAPTOR_CORE_SOCKET_SETTING__
 
-#include "core/resolve_address.h"
-#include "core/sockaddr.h"
-#include "util/status.h"
+#include "src/common/resolve_address.h"
+#include "src/common/sockaddr.h"
+#include "raptor-lite/utils/status.h"
 
 /* set a socket to non blocking mode */
 raptor_error raptor_set_socket_nonblocking(int fd, int non_blocking);
@@ -67,18 +67,15 @@ typedef enum raptor_dualstack_mode {
     RAPTOR_DSMODE_DUALSTACK
 } raptor_dualstack_mode;
 
-raptor_error raptor_create_dualstack_socket(
-    const raptor_resolved_address* resolved_addr,
-    int type, int protocol, raptor_dualstack_mode* dsmode, int* newfd);
+raptor_error raptor_create_dualstack_socket(const raptor_resolved_address *resolved_addr, int type,
+                                            int protocol, raptor_dualstack_mode *dsmode,
+                                            int *newfd);
 
-raptor_error raptor_tcp_server_prepare_socket(
-                        int fd,
-                        const raptor_resolved_address* addr,
-                        int* port, int so_reuseport);
+raptor_error raptor_tcp_server_prepare_socket(int fd, const raptor_resolved_address *addr,
+                                              int *port, int so_reuseport);
 
-raptor_error raptor_tcp_client_prepare_socket(
-                        const raptor_resolved_address* addr,
-                        raptor_resolved_address* mapped_addr,
-                        int* newfd, int timeout_ms);
+raptor_error raptor_tcp_client_prepare_socket(const raptor_resolved_address *addr,
+                                              raptor_resolved_address *mapped_addr, int *newfd,
+                                              int timeout_ms);
 
 #endif  // __RAPTOR_CORE_SOCKET_SETTING__

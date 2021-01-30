@@ -20,32 +20,32 @@
 #define __RAPTOR_CORE_EPOLL_THREAD__
 
 #include <stdint.h>
-#include "core/linux/epoll.h"
-#include "core/service.h"
-#include "util/status.h"
-#include "util/thread.h"
+#include "src/linux/epoll.h"
+#include "src/common/service.h"
+#include "raptor-lite/utils/status.h"
+#include "raptor-lite/utils/thread.h"
 
 namespace raptor {
 class SendRecvThread final {
 public:
-    explicit SendRecvThread(internal::IEpollReceiver* rcv);
+    explicit SendRecvThread(internal::IEpollReceiver *rcv);
     ~SendRecvThread();
 
     RefCountedPtr<Status> Init();
     bool Start();
     void Shutdown();
 
-    int Add(int fd, void* data, uint32_t events);
-    int Modify(int fd, void* data, uint32_t events);
+    int Add(int fd, void *data, uint32_t events);
+    int Modify(int fd, void *data, uint32_t events);
     int Delete(int fd, uint32_t events);
 
 private:
-    void DoWork(void* ptr);
-    internal::IEpollReceiver* _receiver;
+    void DoWork(void *ptr);
+    internal::IEpollReceiver *_receiver;
     bool _shutdown;
     Epoll _epoll;
     Thread _thd;
 };
 
-} // namespace raptor
+}  // namespace raptor
 #endif  // __RAPTOR_CORE_EPOLL_THREAD__

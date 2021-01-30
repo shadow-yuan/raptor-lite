@@ -16,14 +16,13 @@
  *
  */
 
-#include "core/linux/tcp_listener.h"
+#include "src/linux/tcp_listener.h"
 #include <string.h>
-#include "core/sockaddr.h"
-#include "core/socket_util.h"
-#include "util/alloc.h"
-#include "util/log.h"
-#include "util/list_entry.h"
-#include "core/linux/socket_setting.h"
+#include "src/common/sockaddr.h"
+#include "src/common/socket_util.h"
+#include "src/utils/log.h"
+#include "src/utils/list_entry.h"
+#include "src/linux/socket_setting.h"
 
 namespace raptor {
 
@@ -35,8 +34,9 @@ struct ListenerObject {
     raptor_dualstack_mode mode;
 };
 
-TcpListener::TcpListener(internal::IAcceptor* cp)
-    : _acceptor(cp), _shutdown(true) {
+TcpListener::TcpListener(internal::IAcceptor *cp)
+    : _acceptor(cp)
+    , _shutdown(true) {
     RAPTOR_LIST_INIT(&_head);
 }
 
@@ -54,8 +54,8 @@ RefCountedPtr<Status> TcpListener::Init() {
         return e;
     }
 
-    _thd = Thread("listen",
-        std::bind(&TcpListener::DoPolling, this, std::placeholders::_1), nullptr);
+    _thd =
+        Thread("listen", std::bind(&TcpListener::DoPolling, this, std::placeholders::_1), nullptr);
 
     return RAPTOR_ERROR_NONE;
 }
@@ -72,9 +72,9 @@ void TcpListener::Shutdown() {
         _thd.Join();
 
         _mtex.Lock();
-        list_entry* entry = _head.next;
+        list_entry *entry = _head.next;
         while (entry != &_head) {
-            auto obj = reinterpret_cast<ListenerObject*>(entry);
+            auto obj = reinterpret_cast<ListenerObject *>(entry);
             entry = entry->next;
 
             raptor_set_socket_shutdown(obj->listen_fd);
@@ -85,7 +85,7 @@ void TcpListener::Shutdown() {
     }
 }
 
-void TcpListener::DoPolling(void* ptr) {
+void TcpListener::DoPolling(void *ptr) {
     while (!_shutdown) {
         int number_of_fd = _epoll.polling();
         if (number_of_fd <= 0) {
@@ -93,13 +93,13 @@ void TcpListener::DoPolling(void* ptr) {
         }
 
         for (int i = 0; i < number_of_fd; i++) {
-            struct epoll_event* ev = _epoll.get_event(i);
+            struct epoll_event *ev = _epoll.get_event(i);
             ProcessEpollEvents(ev->data.ptr, ev->events);
         }
     }
 }
 
-RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_address* addr) {
+RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_address *addr) {
     if (_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("tcp listener uninitialized");
 
     int port = 0, listen_fd = 0;
@@ -117,7 +117,7 @@ RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_addres
 
     // Add to epoll
     _mtex.Lock();
-    ListenerObject* node = new ListenerObject;
+    ListenerObject *node = new ListenerObject;
     raptor_list_push_back(&_head, &node->entry);
     _mtex.Unlock();
 
@@ -128,15 +128,15 @@ RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_addres
 
     _epoll.add(node->listen_fd, node, EPOLLIN);
 
-    char* strAddr = nullptr;
+    char *strAddr = nullptr;
     raptor_sockaddr_to_string(&strAddr, addr, 0);
-    log_debug("start listening on %s", strAddr? strAddr : std::to_string(node->port).c_str());
+    log_debug("start listening on %s", strAddr ? strAddr : std::to_string(node->port).c_str());
     Free(strAddr);
     return e;
 }
 
-void TcpListener::ProcessEpollEvents(void* ptr, uint32_t events) {
-    ListenerObject* sp = (ListenerObject*)ptr;
+void TcpListener::ProcessEpollEvents(void *ptr, uint32_t events) {
+    ListenerObject *sp = (ListenerObject *)ptr;
     RAPTOR_ASSERT(sp != nullptr);
     for (;;) {
         raptor_resolved_address client;
@@ -159,16 +159,13 @@ void TcpListener::ProcessEpollEvents(void* ptr, uint32_t events) {
     }
 }
 
-int TcpListener::AcceptEx(
-                        int sockfd,
-                        raptor_resolved_address* resolved_addr,
-                        int nonblock, int cloexec) {
+int TcpListener::AcceptEx(int sockfd, raptor_resolved_address *resolved_addr, int nonblock,
+                          int cloexec) {
     int flags = 0;
     flags |= nonblock ? SOCK_NONBLOCK : 0;
     flags |= cloexec ? SOCK_CLOEXEC : 0;
     resolved_addr->len = sizeof(resolved_addr->addr);
-    return accept4(sockfd,
-                    reinterpret_cast<raptor_sockaddr*>(resolved_addr->addr),
-                    &resolved_addr->len, flags);
+    return accept4(sockfd, reinterpret_cast<raptor_sockaddr *>(resolved_addr->addr),
+                   &resolved_addr->len, flags);
 }
-} // namespace raptor
+}  // namespace raptor

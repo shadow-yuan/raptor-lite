@@ -16,7 +16,7 @@
  *
  */
 
-#include "core/linux/socket_setting.h"
+#include "src/linux/socket_setting.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -24,12 +24,10 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include "util/alloc.h"
-#include "util/log.h"
-#include "util/sync.h"
-#include "util/string.h"
-#include "core/socket_util.h"
-
+#include "raptor-lite/utils/log.h"
+#include "raptor-lite/utils/sync.h"
+#include "src/utils/string.h"
+#include "src/common/socket_util.h"
 
 /* set a socket to non blocking mode */
 raptor_error raptor_set_socket_nonblocking(int fd, int non_blocking) {
@@ -108,7 +106,7 @@ raptor_error raptor_set_socket_low_latency(int fd, int low_latency) {
 /* set a socket to reuse old addresses */
 raptor_error raptor_set_socket_reuse_port(int fd, int reuse) {
 #ifdef SO_REUSEPORT
-    int val = (reuse != 0) ? 1: 0;
+    int val = (reuse != 0) ? 1 : 0;
     int newval;
     socklen_t intlen = sizeof(newval);
     if (0 != setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val))) {
@@ -131,33 +129,25 @@ raptor_error raptor_set_socket_snd_timeout(int fd, int timeout_ms) {
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms - (tv.tv_sec * 1000)) * 1000;
-    int status = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+    int status = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
 
-    return status == 0
-            ? RAPTOR_ERROR_NONE
-            : RAPTOR_POSIX_ERROR("setsockopt(SO_SNDTIMEO)");
+    return status == 0 ? RAPTOR_ERROR_NONE : RAPTOR_POSIX_ERROR("setsockopt(SO_SNDTIMEO)");
 }
 
 raptor_error raptor_set_socket_rcv_timeout(int fd, int timeout_ms) {
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms - (tv.tv_sec * 1000)) * 1000;
-    int status = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    int status = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
 
-    return status == 0
-            ? RAPTOR_ERROR_NONE
-            : RAPTOR_POSIX_ERROR("setsockopt(SO_RCVTIMEO)");
+    return status == 0 ? RAPTOR_ERROR_NONE : RAPTOR_POSIX_ERROR("setsockopt(SO_RCVTIMEO)");
 }
 
 raptor_error raptor_set_socket_ipv6_only(int fd, int only) {
     int on_off = only ? 1 : 0;
-    int status = setsockopt(
-            fd, IPPROTO_IPV6, IPV6_V6ONLY,
-            &on_off, sizeof(on_off));
+    int status = setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &on_off, sizeof(on_off));
 
-    return status == 0
-            ? RAPTOR_ERROR_NONE
-            : RAPTOR_POSIX_ERROR("setsockopt(IPV6_V6ONLY)");
+    return status == 0 ? RAPTOR_ERROR_NONE : RAPTOR_POSIX_ERROR("setsockopt(IPV6_V6ONLY)");
 }
 
 void raptor_set_socket_shutdown(int fd) {
@@ -167,17 +157,15 @@ void raptor_set_socket_shutdown(int fd) {
     close(fd);
 }
 
-static int raptor_is_unix_socket(const raptor_resolved_address* resolved_addr) {
-    const raptor_sockaddr* addr =
-        reinterpret_cast<const raptor_sockaddr*>(resolved_addr->addr);
+static int raptor_is_unix_socket(const raptor_resolved_address *resolved_addr) {
+    const raptor_sockaddr *addr = reinterpret_cast<const raptor_sockaddr *>(resolved_addr->addr);
     return addr->sa_family == AF_UNIX;
 }
 
 raptor_error raptor_set_socket_tcp_user_timeout(int fd, int timeout) {
     int newval;
     socklen_t len = sizeof(newval);
-    if (0 != setsockopt(fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &timeout,
-                        sizeof(timeout))) {
+    if (0 != setsockopt(fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &timeout, sizeof(timeout))) {
         log_error("setsockopt(TCP_USER_TIMEOUT) %s", strerror(errno));
         return RAPTOR_ERROR_NONE;
     }
@@ -213,11 +201,10 @@ raptor_error raptor_set_socket_no_sigpipe_if_possible(int fd) {
     return RAPTOR_ERROR_NONE;
 }
 
-raptor_error raptor_create_dualstack_socket(
-    const raptor_resolved_address* resolved_addr,
-    int type, int protocol, raptor_dualstack_mode* dsmode, int* newfd) {
-    const raptor_sockaddr* addr =
-        reinterpret_cast<const raptor_sockaddr*>(resolved_addr->addr);
+raptor_error raptor_create_dualstack_socket(const raptor_resolved_address *resolved_addr, int type,
+                                            int protocol, raptor_dualstack_mode *dsmode,
+                                            int *newfd) {
+    const raptor_sockaddr *addr = reinterpret_cast<const raptor_sockaddr *>(resolved_addr->addr);
     int family = addr->sa_family;
     if (family == AF_INET6) {
         *newfd = socket(family, type, protocol);
@@ -256,14 +243,14 @@ static int s_max_accept_queue_size = 0;
 static void init_max_accept_queue_size(void) {
     int n = SOMAXCONN;
     char buf[64];
-    FILE* fp = fopen("/proc/sys/net/core/somaxconn", "r");
+    FILE *fp = fopen("/proc/sys/net/core/somaxconn", "r");
     if (fp == nullptr) {
         /* 2.4 kernel. */
         s_max_accept_queue_size = SOMAXCONN;
         return;
     }
     if (fgets(buf, sizeof buf, fp)) {
-        char* end;
+        char *end;
         long i = strtol(buf, &end, 10);
         if (i > 0 && i <= INT_MAX && end && *end == '\n') {
             n = static_cast<int>(i);
@@ -273,10 +260,9 @@ static void init_max_accept_queue_size(void) {
     s_max_accept_queue_size = n;
 
     if (s_max_accept_queue_size < MIN_SAFE_ACCEPT_QUEUE_SIZE) {
-    log_info(
-            "suspiciously small accept queue (%d) will probably lead to "
-            "connection drops",
-            s_max_accept_queue_size);
+        log_info("suspiciously small accept queue (%d) will probably lead to "
+                 "connection drops",
+                 s_max_accept_queue_size);
     }
 }
 
@@ -286,9 +272,8 @@ static int get_max_accept_queue_size(void) {
 }
 
 /* Prepare a recently-created socket for listening. */
-raptor_error raptor_tcp_server_prepare_socket(
-    int fd, const raptor_resolved_address* addr,
-    int* port, int so_reuseport) {
+raptor_error raptor_tcp_server_prepare_socket(int fd, const raptor_resolved_address *addr,
+                                              int *port, int so_reuseport) {
 
     raptor_resolved_address sockname_temp;
     raptor_error err = RAPTOR_ERROR_NONE;
@@ -316,8 +301,8 @@ raptor_error raptor_tcp_server_prepare_socket(
     err = raptor_set_socket_no_sigpipe_if_possible(fd);
     if (err != RAPTOR_ERROR_NONE) goto error;
 
-    if (bind(fd, reinterpret_cast<raptor_sockaddr*>(const_cast<char*>(addr->addr)),
-            addr->len) < 0) {
+    if (bind(fd, reinterpret_cast<raptor_sockaddr *>(const_cast<char *>(addr->addr)), addr->len) <
+        0) {
         err = RAPTOR_POSIX_ERROR("bind");
         goto error;
     }
@@ -329,7 +314,7 @@ raptor_error raptor_tcp_server_prepare_socket(
 
     sockname_temp.len = static_cast<socklen_t>(sizeof(struct sockaddr_storage));
 
-    if (getsockname(fd, reinterpret_cast<raptor_sockaddr*>(sockname_temp.addr),
+    if (getsockname(fd, reinterpret_cast<raptor_sockaddr *>(sockname_temp.addr),
                     &sockname_temp.len) < 0) {
         err = RAPTOR_POSIX_ERROR("getsockname");
         goto error;
@@ -347,8 +332,8 @@ error:
     return err;
 }
 
-static raptor_error tcp_client_prepare_socket(
-        const raptor_resolved_address* addr, int fd, int timeout_ms) {
+static raptor_error tcp_client_prepare_socket(const raptor_resolved_address *addr, int fd,
+                                              int timeout_ms) {
 
     raptor_error err = RAPTOR_ERROR_NONE;
     if (timeout_ms <= 0) timeout_ms = DEFAULT_CLIENT_TCP_USER_TIMEOUT_MS;
@@ -380,10 +365,9 @@ done:
     return err;
 }
 
-raptor_error raptor_tcp_client_prepare_socket(
-                        const raptor_resolved_address* addr,
-                        raptor_resolved_address* mapped_addr,
-                        int* newfd, int timeout_ms) {
+raptor_error raptor_tcp_client_prepare_socket(const raptor_resolved_address *addr,
+                                              raptor_resolved_address *mapped_addr, int *newfd,
+                                              int timeout_ms) {
     raptor_dualstack_mode dsmode;
     raptor_error error;
     int fd = -1;
@@ -397,8 +381,7 @@ raptor_error raptor_tcp_client_prepare_socket(
         memcpy(mapped_addr, addr, sizeof(*mapped_addr));
     }
 
-    error =
-        raptor_create_dualstack_socket(mapped_addr, SOCK_STREAM, 0, &dsmode, &fd);
+    error = raptor_create_dualstack_socket(mapped_addr, SOCK_STREAM, 0, &dsmode, &fd);
     if (error != RAPTOR_ERROR_NONE) {
         return error;
     }

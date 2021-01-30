@@ -16,13 +16,13 @@
  *
  */
 
-#include "core/linux/epoll_thread.h"
-#include "util/time.h"
+#include "src/linux/epoll_thread.h"
+#include "src/utils/time.h"
 
 namespace raptor {
-SendRecvThread::SendRecvThread(internal::IEpollReceiver* rcv)
-    : _receiver(rcv), _shutdown(true) {
-}
+SendRecvThread::SendRecvThread(internal::IEpollReceiver *rcv)
+    : _receiver(rcv)
+    , _shutdown(true) {}
 
 SendRecvThread::~SendRecvThread() {}
 
@@ -34,8 +34,8 @@ RefCountedPtr<Status> SendRecvThread::Init() {
     _shutdown = false;
     auto e = _epoll.create();
     if (e == RAPTOR_ERROR_NONE) {
-        _thd = Thread("send/recv",
-            std::bind(&SendRecvThread::DoWork, this, std::placeholders::_1), nullptr);
+        _thd = Thread("send/recv", std::bind(&SendRecvThread::DoWork, this, std::placeholders::_1),
+                      nullptr);
     }
     return e;
 }
@@ -55,9 +55,9 @@ void SendRecvThread::Shutdown() {
     }
 }
 
-void SendRecvThread::DoWork(void* ptr) {
+void SendRecvThread::DoWork(void *ptr) {
     while (!_shutdown) {
-        
+
         time_t current_time = Now();
         _receiver->OnCheckingEvent(current_time);
 
@@ -70,11 +70,9 @@ void SendRecvThread::DoWork(void* ptr) {
         }
 
         for (int i = 0; i < number_of_fd; i++) {
-            struct epoll_event* ev = _epoll.get_event(i);
+            struct epoll_event *ev = _epoll.get_event(i);
 
-            if (ev->events & EPOLLERR
-                || ev->events & EPOLLHUP
-                || ev->events & EPOLLRDHUP) {
+            if (ev->events & EPOLLERR || ev->events & EPOLLHUP || ev->events & EPOLLRDHUP) {
                 _receiver->OnErrorEvent(ev->data.ptr);
                 continue;
             }
@@ -88,11 +86,11 @@ void SendRecvThread::DoWork(void* ptr) {
     }
 }
 
-int SendRecvThread::Add(int fd, void* data, uint32_t events) {
+int SendRecvThread::Add(int fd, void *data, uint32_t events) {
     return _epoll.add(fd, data, events | EPOLLRDHUP);
 }
 
-int SendRecvThread::Modify(int fd, void* data, uint32_t events) {
+int SendRecvThread::Modify(int fd, void *data, uint32_t events) {
     return _epoll.modify(fd, data, events | EPOLLRDHUP);
 }
 
@@ -100,4 +98,4 @@ int SendRecvThread::Delete(int fd, uint32_t events) {
     return _epoll.remove(fd, events | EPOLLRDHUP);
 }
 
-} // namespace raptor
+}  // namespace raptor

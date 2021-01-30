@@ -16,14 +16,14 @@
  *
  */
 
-#include "core/linux/tcp_server.h"
-#include "core/linux/tcp_listener.h"
-#include "core/linux/socket_setting.h"
-#include "core/mpscq.h"
-#include "core/resolve_address.h"
-#include "core/socket_util.h"
-#include "util/log.h"
-#include "util/time.h"
+#include "src/linux/tcp_server.h"
+#include "src/linux/tcp_listener.h"
+#include "src/linux/socket_setting.h"
+#include "raptor-lite/utils/mpscq.h"
+#include "src/common/resolve_address.h"
+#include "src/common/socket_util.h"
+#include "raptor-lite/utils/log.h"
+#include "src/utils/time.h"
 
 namespace raptor {
 enum MessageType {
@@ -50,7 +50,7 @@ TcpServer::~TcpServer() {
     }
 }
 
-raptor_error TcpServer::Init(const RaptorOptions* options) {
+raptor_error TcpServer::Init(const RaptorOptions *options) {
     if (!_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("tcp server already running");
 
     _listener = std::make_shared<TcpListener>(this);
@@ -76,10 +76,9 @@ raptor_error TcpServer::Init(const RaptorOptions* options) {
     _options = *options;
     _count.Store(0);
 
-    _mq_thd = Thread(
-            "message_queue",
-            std::bind(&TcpServer::MessageQueueThread, this, std::placeholders::_1)
-            , nullptr);
+    _mq_thd =
+        Thread("message_queue",
+               std::bind(&TcpServer::MessageQueueThread, this, std::placeholders::_1), nullptr);
 
     _conn_mtx.Lock();
     _mgr.resize(RESERVED_CONNECTION_COUNT);
@@ -94,10 +93,10 @@ raptor_error TcpServer::Init(const RaptorOptions* options) {
     return RAPTOR_ERROR_NONE;
 }
 
-raptor_error TcpServer::AddListening(const char* addr) {
+raptor_error TcpServer::AddListening(const char *addr) {
     if (_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("tcp server uninitialized");
     if (!addr) return RAPTOR_ERROR_FROM_STATIC_STRING("invalid parameters");
-    raptor_resolved_addresses* addrs;
+    raptor_resolved_addresses *addrs;
     auto ret = raptor_blocking_resolve_address(addr, nullptr, &addrs);
     if (ret != RAPTOR_ERROR_NONE) {
         return ret;
@@ -143,7 +142,7 @@ void TcpServer::Shutdown() {
         _conn_mtx.Lock();
         _timeout_record_list.clear();
         _free_index_list.clear();
-        for (auto& obj : _mgr) {
+        for (auto &obj : _mgr) {
             if (obj.first) {
                 obj.first->Shutdown(false);
                 obj.first.reset();
@@ -156,7 +155,7 @@ void TcpServer::Shutdown() {
         bool empty = true;
         do {
             auto n = _mpscq.PopAndCheckEnd(&empty);
-            auto msg = reinterpret_cast<TcpMessageNode*>(n);
+            auto msg = reinterpret_cast<TcpMessageNode *>(n);
             if (msg != nullptr) {
                 _count.FetchSub(1, MemoryOrder::RELAXED);
                 delete msg;
@@ -165,16 +164,16 @@ void TcpServer::Shutdown() {
     }
 }
 
-void TcpServer::SetProtocol(IProtocol* proto) {
+void TcpServer::SetProtocol(IProtocol *proto) {
     _proto = proto;
 }
 
-bool TcpServer::Send(ConnectionId cid, const void* buf, size_t len) {
+bool TcpServer::Send(ConnectionId cid, const void *buf, size_t len) {
     return SendWithHeader(cid, nullptr, 0, buf, len);
 }
 
-bool TcpServer::SendWithHeader(ConnectionId cid,
-        const void* hdr, size_t hdr_len, const void* data, size_t data_len) {
+bool TcpServer::SendWithHeader(ConnectionId cid, const void *hdr, size_t hdr_len, const void *data,
+                               size_t data_len) {
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
         return false;
@@ -187,7 +186,7 @@ bool TcpServer::SendWithHeader(ConnectionId cid,
     return false;
 }
 
-bool TcpServer::CloseConnection(ConnectionId cid){
+bool TcpServer::CloseConnection(ConnectionId cid) {
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
         return false;
@@ -202,19 +201,20 @@ bool TcpServer::CloseConnection(ConnectionId cid){
 }
 
 // IAcceptor implement
-void TcpServer::OnNewConnection(int sock,
-    int listen_port, const raptor_resolved_address* addr) {
+void TcpServer::OnNewConnection(int sock, int listen_port, const raptor_resolved_address *addr) {
     AutoMutex g(&_conn_mtx);
 
     if (_free_index_list.empty() && _mgr.size() >= _options.max_connections) {
-        log_error("The maximum number of connections has been reached: %u", _options.max_connections);
+        log_error("The maximum number of connections has been reached: %u",
+                  _options.max_connections);
         raptor_set_socket_shutdown(sock);
         return;
     }
 
     if (_free_index_list.empty()) {
         size_t count = _mgr.size();
-        size_t expand = ((count * 2) < _options.max_connections) ? (count * 2) : _options.max_connections;
+        size_t expand =
+            ((count * 2) < _options.max_connections) ? (count * 2) : _options.max_connections;
         _mgr.resize(expand);
         for (size_t i = count; i < expand; i++) {
             _mgr[i].first = nullptr;
@@ -236,7 +236,7 @@ void TcpServer::OnNewConnection(int sock,
 }
 
 // Receiver implement (epoll event)
-void TcpServer::OnErrorEvent(void* ptr) {
+void TcpServer::OnErrorEvent(void *ptr) {
     ConnectionId cid = (ConnectionId)ptr;
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
@@ -251,7 +251,7 @@ void TcpServer::OnErrorEvent(void* ptr) {
     }
 }
 
-void TcpServer::OnRecvEvent(void* ptr) {
+void TcpServer::OnRecvEvent(void *ptr) {
     ConnectionId cid = (ConnectionId)ptr;
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
@@ -270,7 +270,7 @@ void TcpServer::OnRecvEvent(void* ptr) {
     log_error("tcpserver: Failed to post async recv");
 }
 
-void TcpServer::OnSendEvent(void* ptr) {
+void TcpServer::OnSendEvent(void *ptr) {
     ConnectionId cid = (ConnectionId)ptr;
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
@@ -318,8 +318,8 @@ void TcpServer::OnCheckingEvent(time_t current) {
 }
 
 // ServiceInterface implement
-void TcpServer::OnConnectionArrived(ConnectionId cid, const Slice* addr) {
-    TcpMessageNode* msg = new TcpMessageNode;
+void TcpServer::OnConnectionArrived(ConnectionId cid, const Slice *addr) {
+    TcpMessageNode *msg = new TcpMessageNode;
     msg->cid = cid;
     msg->addr = *addr;
     msg->type = MessageType::kNewConnection;
@@ -328,8 +328,8 @@ void TcpServer::OnConnectionArrived(ConnectionId cid, const Slice* addr) {
     _cv.Signal();
 }
 
-void TcpServer::OnDataReceived(ConnectionId cid, const Slice* s) {
-    TcpMessageNode* msg = new TcpMessageNode;
+void TcpServer::OnDataReceived(ConnectionId cid, const Slice *s) {
+    TcpMessageNode *msg = new TcpMessageNode;
     msg->cid = cid;
     msg->slice = *s;
     msg->type = MessageType::kRecvAMessage;
@@ -339,7 +339,7 @@ void TcpServer::OnDataReceived(ConnectionId cid, const Slice* s) {
 }
 
 void TcpServer::OnConnectionClosed(ConnectionId cid) {
-    TcpMessageNode* msg = new TcpMessageNode;
+    TcpMessageNode *msg = new TcpMessageNode;
     msg->cid = cid;
     msg->type = MessageType::kCloseClient;
     _mpscq.push(&msg->node);
@@ -347,7 +347,7 @@ void TcpServer::OnConnectionClosed(ConnectionId cid) {
     _cv.Signal();
 }
 
-void TcpServer::MessageQueueThread(void* ptr) {
+void TcpServer::MessageQueueThread(void *ptr) {
     while (!_shutdown) {
         RaptorMutexLock(_mutex);
 
@@ -359,7 +359,7 @@ void TcpServer::MessageQueueThread(void* ptr) {
             }
         }
         auto n = _mpscq.pop();
-        auto msg = reinterpret_cast<struct TcpMessageNode*>(n);
+        auto msg = reinterpret_cast<struct TcpMessageNode *>(n);
 
         if (msg != nullptr) {
             _count.FetchSub(1, MemoryOrder::RELAXED);
@@ -370,10 +370,10 @@ void TcpServer::MessageQueueThread(void* ptr) {
     }
 }
 
-void TcpServer::Dispatch(struct TcpMessageNode* msg) {
+void TcpServer::Dispatch(struct TcpMessageNode *msg) {
     switch (msg->type) {
     case MessageType::kNewConnection:
-        _service->OnConnected(msg->cid, reinterpret_cast<const char*>(msg->addr.begin()));
+        _service->OnConnected(msg->cid, reinterpret_cast<const char *>(msg->addr.begin()));
         break;
     case MessageType::kRecvAMessage:
         _service->OnMessageReceived(msg->cid, msg->slice.begin(), msg->slice.size());
@@ -408,7 +408,7 @@ void TcpServer::RefreshTime(uint32_t index) {
     _mgr[index].second = _timeout_record_list.insert({deadline_seconds, index});
 }
 
-bool TcpServer::SetUserData(ConnectionId cid, void* ptr) {
+bool TcpServer::SetUserData(ConnectionId cid, void *ptr) {
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
         return false;
@@ -422,7 +422,7 @@ bool TcpServer::SetUserData(ConnectionId cid, void* ptr) {
     return false;
 }
 
-bool TcpServer::GetUserData(ConnectionId cid, void** ptr) {
+bool TcpServer::GetUserData(ConnectionId cid, void **ptr) {
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
         return false;
@@ -450,7 +450,7 @@ bool TcpServer::SetExtendInfo(ConnectionId cid, uint64_t data) {
     return false;
 }
 
-bool TcpServer::GetExtendInfo(ConnectionId cid, uint64_t& data) {
+bool TcpServer::GetExtendInfo(ConnectionId cid, uint64_t &data) {
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
         return false;
@@ -464,7 +464,7 @@ bool TcpServer::GetExtendInfo(ConnectionId cid, uint64_t& data) {
     return false;
 }
 
-int TcpServer::GetPeerString(ConnectionId cid, char* buf, int buf_len) {
+int TcpServer::GetPeerString(ConnectionId cid, char *buf, int buf_len) {
     uint32_t index = CheckConnectionId(cid);
     if (index == InvalidIndex) {
         return -1;

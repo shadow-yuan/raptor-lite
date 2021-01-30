@@ -21,7 +21,7 @@
 
 #include <sys/epoll.h>
 #include <stddef.h>
-#include "util/status.h"
+#include "raptor-lite/utils/status.h"
 
 namespace raptor {
 class Epoll final {
@@ -30,18 +30,18 @@ public:
     ~Epoll();
 
     RefCountedPtr<Status> create();
-    int add(int fd, void* data, uint32_t events);
-    int modify(int fd, void* data, uint32_t events);
+    int add(int fd, void *data, uint32_t events);
+    int modify(int fd, void *data, uint32_t events);
     int remove(int fd, uint32_t events);
 
     // epoll_wait
     int polling(int timeout = 1000);
-    struct epoll_event* get_event(size_t index);
+    struct epoll_event *get_event(size_t index);
 
 private:
     enum { MAX_EPOLL_EVENTS = 100 };
 
-    int ctl(int fd, epoll_event* ev, int op);
+    int ctl(int fd, epoll_event *ev, int op);
     int _epoll_fd;
     struct epoll_event _events[MAX_EPOLL_EVENTS];
 };
