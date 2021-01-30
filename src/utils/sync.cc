@@ -16,12 +16,11 @@
  *
  */
 
-#include "util/sync.h"
-#include "util/log.h"
+#include "raptor-lite/utils/sync.h"
+#include "raptor-lite/utils/log.h"
 
 #ifdef _WIN32
-int RaptorCondVarWait(
-    raptor_condvar_t* cv, raptor_mutex_t* mutex, int64_t timeout_ms) {
+int RaptorCondVarWait(raptor_condvar_t *cv, raptor_mutex_t *mutex, int64_t timeout_ms) {
     int timeout = 0;
     if (timeout_ms < 0) {
         SleepConditionVariableCS(cv, mutex, INFINITE);
@@ -31,32 +30,31 @@ int RaptorCondVarWait(
     return timeout;
 }
 
-static void* dont_use_it = NULL;
+static void *dont_use_it = NULL;
 struct raptor_init_once_parameter {
     void (*init_function)(void);
 };
 
-static BOOL CALLBACK RaptorInitOnceCallback(raptor_once_t* , void* Parameter, void** ) {
-    struct raptor_init_once_parameter* p = (struct raptor_init_once_parameter*)Parameter;
+static BOOL CALLBACK RaptorInitOnceCallback(raptor_once_t *, void *Parameter, void **) {
+    struct raptor_init_once_parameter *p = (struct raptor_init_once_parameter *)Parameter;
     p->init_function();
     return TRUE;
 }
 
-void RaptorOnceInit(raptor_once_t* once, void (*init_function)(void)) {
+void RaptorOnceInit(raptor_once_t *once, void (*init_function)(void)) {
     struct raptor_init_once_parameter parameter;
     parameter.init_function = init_function;
     InitOnceExecuteOnce(once, RaptorInitOnceCallback, &parameter, &dont_use_it);
 }
 
 #else
-void RaptorCondVarInit(raptor_condvar_t* cv) {
+void RaptorCondVarInit(raptor_condvar_t *cv) {
     pthread_condattr_t attr;
     pthread_condattr_init(&attr);
     pthread_cond_init(cv, &attr);
 }
 
-int RaptorCondVarWait(
-    raptor_condvar_t* cv, raptor_mutex_t* mutex, int64_t timeout_ms) {
+int RaptorCondVarWait(raptor_condvar_t *cv, raptor_mutex_t *mutex, int64_t timeout_ms) {
     int error = 0;
     if (timeout_ms < 0) {
         error = pthread_cond_wait(cv, mutex);
@@ -78,7 +76,7 @@ int RaptorCondVarWait(
     return (error == ETIMEDOUT) ? 1 : 0;
 }
 
-void RaptorOnceInit(raptor_once_t* once_control, void (*init_routine)(void)) {
+void RaptorOnceInit(raptor_once_t *once_control, void (*init_routine)(void)) {
     RAPTOR_ASSERT(pthread_once(once_control, init_routine) == 0);
 }
 

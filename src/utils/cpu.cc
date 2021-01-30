@@ -16,13 +16,14 @@
  *
  */
 
-#include "util/cpu.h"
-#include "util/sync.h"
+#include "src/utils/cpu.h"
+
 #ifdef _WIN32
 #include <sysinfoapi.h>
 #else
 #include <unistd.h>
 #endif
+#include "raptor-lite/utils/sync.h"
 
 static int number_of_cpu_cores = 0;
 

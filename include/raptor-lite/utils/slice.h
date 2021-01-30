@@ -30,6 +30,7 @@ class Slice final {
 public:
     Slice();
     Slice(const char *ptr);
+    Slice(const std::string &str);
     Slice(const void *buf, size_t len);
     Slice(void *buf, size_t len);
     Slice(const char *ptr, size_t len);

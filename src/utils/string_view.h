@@ -25,8 +25,6 @@
 #include <memory>
 #include <string>
 
-#include "util/alloc.h"
-
 namespace raptor {
 
 // Provides a light-weight view over a char array or a slice, similar but not
@@ -53,23 +51,40 @@ class StringView final {
 public:
     static constexpr size_t npos = std::numeric_limits<size_t>::max();
 
-    constexpr StringView(const char* ptr, size_t size) : _ptr(ptr), _size(size) {}
-    constexpr StringView(const char* ptr)
-        : StringView(ptr, ptr == nullptr ? 0 : strlen(ptr)) {}
-    constexpr StringView() : StringView(nullptr, 0) {}
+    constexpr StringView(const char *ptr, size_t size)
+        : _ptr(ptr)
+        , _size(size) {}
 
-    constexpr const char* data() const { return _ptr; }
-    constexpr size_t size() const { return _size; }
-    constexpr bool empty() const { return _size == 0; }
+    constexpr StringView(const char *ptr)
+        : StringView(ptr, ptr == nullptr ? 0 : strlen(ptr)) {}
+
+    constexpr StringView()
+        : StringView(nullptr, 0) {}
+
+    constexpr const char *data() const {
+        return _ptr;
+    }
+    constexpr size_t size() const {
+        return _size;
+    }
+    constexpr bool empty() const {
+        return _size == 0;
+    }
 
     StringView substr(size_t start, size_t size = npos) {
         return StringView(_ptr + start, std::min(size, _size - start));
     }
 
-    constexpr const char& operator[](size_t i) const { return _ptr[i]; }
+    constexpr const char &operator[](size_t i) const {
+        return _ptr[i];
+    }
 
-    const char& front() const { return _ptr[0]; }
-    const char& back() const { return _ptr[_size - 1]; }
+    const char &front() const {
+        return _ptr[0];
+    }
+    const char &back() const {
+        return _ptr[_size - 1];
+    }
 
     void remove_prefix(size_t n) {
         _ptr += n;
@@ -82,8 +97,7 @@ public:
 
     size_t find(char c, size_t pos = 0) const {
         if (empty() || pos >= _size) return npos;
-        const char* result =
-            static_cast<const char*>(memchr(_ptr + pos, c, _size - pos));
+        const char *result = static_cast<const char *>(memchr(_ptr + pos, c, _size - pos));
         return result != nullptr ? result - _ptr : npos;
     }
 
@@ -94,51 +108,44 @@ public:
 
     // Converts to `std::basic_string`.
     template <typename Allocator>
-    explicit operator std::basic_string<char, std::char_traits<char>, Allocator>()
-        const {
+    explicit operator std::basic_string<char, std::char_traits<char>, Allocator>() const {
         if (data() == nullptr) return {};
-        return std::basic_string<char, std::char_traits<char>, Allocator>(
-            data(), size());
+        return std::basic_string<char, std::char_traits<char>, Allocator>(data(), size());
     }
 
 private:
-    const char* _ptr;
+    const char *_ptr;
     size_t _size;
 };
 
 inline bool operator==(StringView lhs, StringView rhs) {
-    return lhs.size() == rhs.size() &&
-            strncmp(lhs.data(), rhs.data(), lhs.size()) == 0;
+    return lhs.size() == rhs.size() && strncmp(lhs.data(), rhs.data(), lhs.size()) == 0;
 }
 
-inline bool operator!=(StringView lhs, StringView rhs) { return !(lhs == rhs); }
-
+inline bool operator!=(StringView lhs, StringView rhs) {
+    return !(lhs == rhs);
+}
 
 struct DefaultDeleteChar {
-    void operator() (char* ptr) {
-        raptor::Free(ptr);
+    void operator()(char *ptr) {
+        free(ptr);
     }
 };
 
 template <typename T>
 using UniquePtr = std::unique_ptr<T, DefaultDeleteChar>;
 
-template <typename T, typename... Args>
-inline std::unique_ptr<T> MakeUnique(Args&&... args) {
-    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-}
-
 // Creates a dup of the string viewed by this class.
 // Return value is null-terminated and never nullptr.
 inline UniquePtr<char> StringViewToCString(const StringView sv) {
-    char* str = static_cast<char*>(Malloc(sv.size() + 1));
+    char *str = static_cast<char *>(malloc(sv.size() + 1));
     if (sv.size() > 0) memcpy(str, sv.data(), sv.size());
     str[sv.size()] = '\0';
     return UniquePtr<char>(str);
 }
 
 // Compares lhs and rhs.
-inline int StringViewCmp(const StringView lhs, const StringView rhs) {
+inline int StringViewCompare(const StringView lhs, const StringView rhs) {
     const size_t len = std::min(lhs.size(), rhs.size());
     const int ret = strncmp(lhs.data(), rhs.data(), len);
     if (ret != 0) return ret;

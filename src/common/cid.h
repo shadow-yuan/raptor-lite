@@ -20,11 +20,12 @@
 #define __RAPTOR_CORE_CID__
 
 #include <stdint.h>
-#include "raptor/types.h"
 
 namespace raptor {
-namespace core {
 
+using ConnectionId = uint64_t;
+
+namespace core {
 constexpr ConnectionId InvalidConnectionId = (ConnectionId)(~0);
 
 static inline ConnectionId BuildConnectionId(uint16_t magic, uint16_t listen_port, uint32_t uid) {
@@ -47,7 +48,8 @@ static inline uint16_t GetMagicNumber(ConnectionId cid) {
 
 static inline uint16_t GetListenPort(ConnectionId cid) {
     uint32_t n = (uint32_t)(cid >> 32);
-    return (uint16_t)(n & 0xffff);;
+    return (uint16_t)(n & 0xffff);
+    ;
 }
 
 static inline uint32_t GetUserId(ConnectionId cid) {

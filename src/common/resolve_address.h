@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "util/status.h"
+#include "raptor-lite/utils/status.h"
 
 typedef struct {
     char addr[128];
@@ -31,18 +31,15 @@ typedef struct {
 
 typedef struct {
     size_t naddrs;
-    raptor_resolved_address* addrs;
+    raptor_resolved_address *addrs;
 } raptor_resolved_addresses;
 
 /* Resolve addr in a blocking fashion. On success,
    default_port can be nullptr, or "https" or "http"
    result must be freed with grpc_resolved_addresses_destroy. */
-raptor_error raptor_blocking_resolve_address(
-                    const char* name,
-                    const char* default_port,
-                    raptor_resolved_addresses** addresses);
+raptor_error raptor_blocking_resolve_address(const char *name, const char *default_port,
+                                             raptor_resolved_addresses **addresses);
 
-
-void raptor_resolved_addresses_destroy(raptor_resolved_addresses* addrs);
+void raptor_resolved_addresses_destroy(raptor_resolved_addresses *addrs);
 
 #endif  // __RAPTOR_CORE_RESOLVE_ADDRESS__

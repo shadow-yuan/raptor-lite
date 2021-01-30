@@ -16,27 +16,26 @@
  *
  */
 
-#include "core/slice/slice_buffer.h"
+#include "raptor-lite/utils/slice_buffer.h"
 #include <string.h>
-#include "util/alloc.h"
-#include "util/log.h"
-#include "util/useful.h"
+#include "raptor-lite/utils/log.h"
+#include "raptor-lite/utils/useful.h"
 
 namespace raptor {
 
 Slice SliceBuffer::Merge() const {
 
-    if (Count() == 0) {
+    if (SliceCount() == 0) {
         return Slice();
     }
 
-    if (Count() == 1) {
+    if (SliceCount() == 1) {
         return _vs[0];
     }
 
     size_t len = GetBufferLength();
     Slice ret = MakeSliceByLength(len);
-    uint8_t* buf = ret.Buffer();
+    uint8_t *buf = ret.Buffer();
     for (auto it = _vs.begin(); it != _vs.end(); ++it) {
         size_t blk_size = it->size();
         if (blk_size > 0) {
@@ -47,7 +46,7 @@ Slice SliceBuffer::Merge() const {
     return ret;
 }
 
-size_t SliceBuffer::Count() const {
+size_t SliceBuffer::SliceCount() const {
     return _vs.size();
 }
 
@@ -55,18 +54,18 @@ size_t SliceBuffer::GetBufferLength() const {
     return _length;
 }
 
-void SliceBuffer::AddSlice(const Slice& s) {
+void SliceBuffer::AddSlice(const Slice &s) {
     _vs.push_back(s);
     _length += s.size();
 }
 
-void SliceBuffer::AddSlice(Slice&& s) {
+void SliceBuffer::AddSlice(Slice &&s) {
     _vs.push_back(s);
     _length += s.size();
 }
 
 Slice SliceBuffer::GetHeader(size_t len) {
-    if(len == 0 || GetBufferLength() < len) {
+    if (len == 0 || GetBufferLength() < len) {
         return Slice();
     }
 
@@ -76,20 +75,20 @@ Slice SliceBuffer::GetHeader(size_t len) {
 }
 
 bool SliceBuffer::MoveHeader(size_t len) {
-    if(GetBufferLength() < len) {
+    if (GetBufferLength() < len) {
         return false;
     }
-    if(len == 0) {
+    if (len == 0) {
         return true;
     }
 
     auto it = _vs.begin();
     size_t left = it->size();
 
-    if(left > len) {
-        *it = *it - len;
+    if (left > len) {
+        it->PopFront(len);
         _length -= len;
-    } else if(left == len) {
+    } else if (left == len) {
         _length -= len;
         _vs.erase(it);
     } else {
@@ -102,7 +101,7 @@ bool SliceBuffer::MoveHeader(size_t len) {
     return true;
 }
 
-size_t SliceBuffer::CopyToBuffer(void* buffer, size_t length) {
+size_t SliceBuffer::CopyToBuffer(void *buffer, size_t length) {
     RAPTOR_ASSERT(length <= GetBufferLength());
 
     auto it = _vs.begin();
@@ -110,10 +109,10 @@ size_t SliceBuffer::CopyToBuffer(void* buffer, size_t length) {
     size_t left = length;
     size_t pos = 0;
 
-    while(it != _vs.end() && left != 0) {
+    while (it != _vs.end() && left != 0) {
 
         size_t len = RAPTOR_MIN(left, it->size());
-        memcpy((uint8_t*)buffer + pos, it->begin(), len);
+        memcpy((uint8_t *)buffer + pos, it->begin(), len);
 
         left -= len;
         pos += len;
@@ -129,18 +128,38 @@ void SliceBuffer::ClearBuffer() {
     _length = 0;
 }
 
-Slice SliceBuffer::GetTopSlice() const {
-    if (_vs.empty()) {
-        return Slice();
-    }
+bool SliceBuffer::Empty() const {
+    return _vs.empty();
+}
+
+const Slice &SliceBuffer::Front() const {
+    size_t n = _vs.size();
+    RAPTOR_ASSERT(n > 0);
     return _vs[0];
 }
 
-Slice SliceBuffer::GetSlice(size_t index) const {
-    if (index < _vs.size()) {
-        return _vs[index];
-    }
-    return Slice();
+const Slice &SliceBuffer::Back() const {
+    size_t n = _vs.size();
+    RAPTOR_ASSERT(n > 0);
+    return _vs[n - 1];
 }
 
-} // namespace raptor
+void SliceBuffer::PopFront() {
+    if (!_vs.empty()) {
+        auto it = _vs.begin();
+        _length -= it->size();
+        _vs.erase(it);
+    }
+}
+
+void SliceBuffer::PopBack() {
+    size_t c = _vs.size();
+    if (c != 0) {
+        auto it = _vs.begin();
+        std::advance(it, c - 1);
+        _length -= it->size();
+        _vs.erase(it);
+    }
+}
+
+}  // namespace raptor

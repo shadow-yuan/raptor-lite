@@ -16,7 +16,7 @@
  *
  */
 
-#include "util/thread.h"
+#include "raptor-lite/utils/thread.h"
 #include <string.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -24,18 +24,18 @@
 #include <pthread.h>
 #include <unistd.h>
 #endif
-#include "util/alloc.h"
-#include "util/log.h"
-#include "util/sync.h"
-#include "util/useful.h"
+
+#include "raptor-lite/utils/log.h"
+#include "raptor-lite/utils/sync.h"
+#include "raptor-lite/utils/useful.h"
 
 namespace raptor {
 class InternalThreadImpl;
 namespace {
 struct ThreadImplArgs {
-    InternalThreadImpl* thd;
-    ThreadExecutor thread_proc;
-    void* arg;
+    InternalThreadImpl *thd;
+    Thread::Callback thread_proc;
+    void *arg;
     bool joinable;
 #ifdef _WIN32
     HANDLE join_object;
@@ -46,19 +46,17 @@ struct ThreadImplArgs {
 };
 }  // namespace
 
-class InternalThreadImpl : public IThreadService {
+class InternalThreadImpl : public ThreadInterface {
 public:
-    InternalThreadImpl(
-        const char* name,
-        ThreadExecutor thread_proc,
-        void* arg, bool* success, const Thread::Options& options)
+    InternalThreadImpl(const char *name, Thread::Callback thread_proc, void *arg, bool *success,
+                       const Thread::Options &options)
         : _started(false) {
 
         _join_object = 0;
         RaptorMutexInit(&_mutex);
         RaptorCondVarInit(&_ready);
 
-        ThreadImplArgs* info = new ThreadImplArgs;
+        ThreadImplArgs *info = new ThreadImplArgs;
         info->thd = this;
         info->thread_proc = thread_proc;
         info->arg = arg;
@@ -88,8 +86,8 @@ public:
 #else
         pthread_attr_t attr;
         pthread_attr_init(&attr);
-        pthread_attr_setdetachstate(&attr,
-            options.Joinable() ? PTHREAD_CREATE_JOINABLE : PTHREAD_CREATE_DETACHED);
+        pthread_attr_setdetachstate(&attr, options.Joinable() ? PTHREAD_CREATE_JOINABLE
+                                                              : PTHREAD_CREATE_DETACHED);
         if (options.StackSize() != 0) {
             pthread_attr_setstacksize(&attr, options.StackSize());
         }
@@ -129,12 +127,12 @@ public:
 
 private:
 #ifdef _WIN32
-    static DWORD WINAPI Run(void* ptr) {
+    static DWORD WINAPI Run(void *ptr) {
 #else
-    static void* Run(void* ptr) {
+    static void *Run(void *ptr) {
 #endif
-        ThreadImplArgs info = *(ThreadImplArgs*)ptr;
-        delete (ThreadImplArgs*)ptr;
+        ThreadImplArgs info = *(ThreadImplArgs *)ptr;
+        delete (ThreadImplArgs *)ptr;
 
         RaptorMutexLock(&info.thd->_mutex);
         while (!info.thd->_started) {
@@ -144,7 +142,7 @@ private:
 
         try {
             (info.thread_proc)(info.arg);
-        } catch(...) {
+        } catch (...) {
             log_error("An exception occurred in %s thread", info.name);
         }
 
@@ -172,13 +170,10 @@ private:
 
 Thread::Thread()
     : _impl(nullptr)
-    , _state(kNull) {
-}
+    , _state(kNull) {}
 
-Thread::Thread(
-    const char* thread_name,
-    ThreadExecutor thread_proc, void* arg,
-    bool* success, const Options& options) {
+Thread::Thread(const char *thread_name, Thread::Callback thread_proc, void *arg, bool *success,
+               const Options &options) {
     bool ret = false;
     _impl = new InternalThreadImpl(thread_name, thread_proc, arg, &ret, options);
     if (!ret) {
@@ -193,13 +188,14 @@ Thread::Thread(
     }
 }
 
-Thread::Thread(Thread && other)
-    : _impl(other._impl), _state(other._state) {
+Thread::Thread(Thread &&other)
+    : _impl(other._impl)
+    , _state(other._state) {
     other._impl = nullptr;
     other._state = kNull;
 }
 
-Thread& Thread::operator= (Thread && other) {
+Thread &Thread::operator=(Thread &&other) {
     if (this != &other) {
         _impl = other._impl;
         _state = other._state;

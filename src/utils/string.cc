@@ -16,18 +16,17 @@
  *
  */
 
-#include "util/string.h"
+#include "src/utils/string.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
-#include "util/alloc.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
 
-char* raptor_strdup(const char* src) {
-    char* dst;
+char *raptor_strdup(const char *src) {
+    char *dst;
     size_t len;
 
     if (!src) {
@@ -35,19 +34,19 @@ char* raptor_strdup(const char* src) {
     }
 
     len = strlen(src) + 1;
-    dst = static_cast<char*>(raptor::Malloc(len));
+    dst = static_cast<char *>(malloc(len));
 
     memcpy(dst, src, len);
     return dst;
 }
 
-int raptor_asprintf(char** strp, const char* format, ...) {
+int raptor_asprintf(char **strp, const char *format, ...) {
     va_list args;
     va_start(args, format);
 #ifdef _WIN32
     int ret = _vscprintf(format, args);
 #else
-    char buf[128] = { 0 };
+    char buf[128] = {0};
     int ret = vsnprintf(buf, sizeof(buf), format, args);
 #endif
     va_end(args);
@@ -57,7 +56,7 @@ int raptor_asprintf(char** strp, const char* format, ...) {
     }
 
     size_t strp_buflen = static_cast<size_t>(ret) + 1;
-    if ((*strp = static_cast<char*>(raptor::Malloc(strp_buflen))) == nullptr) {
+    if ((*strp = static_cast<char *>(malloc(strp_buflen))) == nullptr) {
         return -1;
     }
 
@@ -78,23 +77,22 @@ int raptor_asprintf(char** strp, const char* format, ...) {
     }
 
     // this should never happen.
-    raptor::Free(*strp);
+    free(*strp);
     *strp = nullptr;
     return -1;
 }
 
 #ifdef _WIN32
 
-char* raptor_format_message(int messageid) {
-    char* error_text = NULL;
+char *raptor_format_message(int messageid) {
+    char *error_text = NULL;
     // Use MBCS version of FormatMessage to match return value.
     DWORD status = ::FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-            FORMAT_MESSAGE_IGNORE_INSERTS,
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL, (DWORD)messageid, MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT),
-        reinterpret_cast<char*>(&error_text), 0, NULL);
+        reinterpret_cast<char *>(&error_text), 0, NULL);
     if (status == 0) return raptor_strdup("Unable to retrieve error string");
-    char* message = raptor_strdup(error_text);
+    char *message = raptor_strdup(error_text);
     ::LocalFree(error_text);
     return message;
 }

@@ -21,9 +21,9 @@
 
 #include <time.h>
 
-#include "core/cid.h"
-#include "core/sockaddr.h"
-#include "core/resolve_address.h"
+#include "src/common/cid.h"
+#include "src/common/sockaddr.h"
+#include "src/common/resolve_address.h"
 
 namespace raptor {
 
@@ -36,21 +36,21 @@ class IAcceptor {
 public:
     virtual ~IAcceptor() {}
     virtual void OnNewConnection(
-    #ifdef _WIN32
+#ifdef _WIN32
         SOCKET fd,
-    #else
+#else
         int fd,
-    #endif
-        int listen_port, const raptor_resolved_address* addr) = 0;
+#endif
+        int listen_port, const raptor_resolved_address *addr) = 0;
 };
 
 // for epoll
 class IEpollReceiver {
 public:
     virtual ~IEpollReceiver() {}
-    virtual void OnErrorEvent(void* ptr) = 0;
-    virtual void OnRecvEvent(void* ptr) = 0;
-    virtual void OnSendEvent(void* ptr) = 0;
+    virtual void OnErrorEvent(void *ptr) = 0;
+    virtual void OnRecvEvent(void *ptr) = 0;
+    virtual void OnSendEvent(void *ptr) = 0;
     virtual void OnCheckingEvent(time_t current) = 0;
 };
 
@@ -58,21 +58,21 @@ public:
 class IIocpReceiver {
 public:
     virtual ~IIocpReceiver() {}
-    virtual void OnErrorEvent(void* ptr, size_t err_code) = 0;
-    virtual void OnRecvEvent(void* ptr, size_t transferred_bytes) = 0;
-    virtual void OnSendEvent(void* ptr, size_t transferred_bytes) = 0;
+    virtual void OnErrorEvent(void *ptr, size_t err_code) = 0;
+    virtual void OnRecvEvent(void *ptr, size_t transferred_bytes) = 0;
+    virtual void OnSendEvent(void *ptr, size_t transferred_bytes) = 0;
     virtual void OnCheckingEvent(time_t current) = 0;
 };
 
 class INotificationTransfer {
 public:
     virtual ~INotificationTransfer() {}
-    virtual void OnConnectionArrived(ConnectionId cid, const Slice* addr) = 0;
-    virtual void OnDataReceived(ConnectionId cid, const Slice* s) = 0;
+    virtual void OnConnectionArrived(ConnectionId cid, const Slice *addr) = 0;
+    virtual void OnDataReceived(ConnectionId cid, const Slice *s) = 0;
     virtual void OnConnectionClosed(ConnectionId cid) = 0;
 };
 
-} // namespace internal
-} // namespace raptor
+}  // namespace internal
+}  // namespace raptor
 
-#endif // __RAPTOR_CORE_SERVICE__
+#endif  // __RAPTOR_CORE_SERVICE__

@@ -16,14 +16,14 @@
  *
  */
 
-#include "core/mpscq.h"
-#include "util/log.h"
+#include "raptor-lite/utils/mpscq.h"
+#include "raptor-lite/utils/log.h"
 
 namespace raptor {
 
 MultiProducerSingleConsumerQueue::MultiProducerSingleConsumerQueue()
-    : _newest{&_stub}, _oldest(&_stub) {
-}
+    : _newest{&_stub}
+    , _oldest(&_stub) {}
 
 MultiProducerSingleConsumerQueue::~MultiProducerSingleConsumerQueue() {
     auto p = _newest.Load();
@@ -31,22 +31,23 @@ MultiProducerSingleConsumerQueue::~MultiProducerSingleConsumerQueue() {
     RAPTOR_ASSERT(_oldest == &_stub);
 }
 
-bool MultiProducerSingleConsumerQueue::push(Node* node) {
+bool MultiProducerSingleConsumerQueue::push(Node *node) {
     // Oldest -> prev -> newest(node) -> null
     node->next.Store(nullptr);
-    Node* prev = _newest.Exchange(node, MemoryOrder::ACQ_REL);
+    Node *prev = _newest.Exchange(node, MemoryOrder::ACQ_REL);
     prev->next.Store(node, MemoryOrder::RELEASE);
     return prev == &_stub;
 }
 
-MultiProducerSingleConsumerQueue::Node* MultiProducerSingleConsumerQueue::pop() {
+MultiProducerSingleConsumerQueue::Node *MultiProducerSingleConsumerQueue::pop() {
     bool empty = false;
     return PopAndCheckEnd(&empty);
 }
 
-MultiProducerSingleConsumerQueue::Node* MultiProducerSingleConsumerQueue::PopAndCheckEnd(bool* empty) {
-    Node* tail = _oldest;
-    Node* obj = _oldest->next.Load(MemoryOrder::ACQUIRE);
+MultiProducerSingleConsumerQueue::Node *
+MultiProducerSingleConsumerQueue::PopAndCheckEnd(bool *empty) {
+    Node *tail = _oldest;
+    Node *obj = _oldest->next.Load(MemoryOrder::ACQUIRE);
     if (tail == &_stub) {
         // first to pop, first element is in _stub->next
         // the list is empty
@@ -72,7 +73,7 @@ MultiProducerSingleConsumerQueue::Node* MultiProducerSingleConsumerQueue::PopAnd
     }
 
     // reach the end of the list
-    Node* head = _newest.Load(MemoryOrder::ACQUIRE);
+    Node *head = _newest.Load(MemoryOrder::ACQUIRE);
     if (tail != head) {
         *empty = false;
         // we're still adding
@@ -92,4 +93,4 @@ MultiProducerSingleConsumerQueue::Node* MultiProducerSingleConsumerQueue::PopAnd
     return nullptr;
 }
 
-} // namespace raptor
+}  // namespace raptor

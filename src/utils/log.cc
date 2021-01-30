@@ -16,14 +16,13 @@
  *
  */
 
-#include "util/log.h"
+#include "raptor-lite/utils/log.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "util/alloc.h"
-#include "util/atomic.h"
-#include "util/time.h"
+#include "raptor-lite/utils/atomic.h"
+#include "src/utils/time.h"
 
 #ifdef _WIN32
 #include <processthreadsapi.h>
@@ -34,13 +33,13 @@
 namespace raptor {
 namespace {
 
-void log_default_print(LogArgument* args);
+void log_default_print(LogArgument *args);
 
 AtomicIntptr g_log_function((intptr_t)log_default_print);
-AtomicIntptr g_min_level((intptr_t)LogLevel::kLogLevelDebug);
-char g_level_string[static_cast<int>(LogLevel::kLogLevelDisable)];
+AtomicIntptr g_min_level((intptr_t)LogLevel::kDebug);
+char g_level_char[static_cast<int>(LogLevel::kDisable)] = {'D', 'I', 'E'};
 
-void log_default_print(LogArgument* args) {
+void log_default_print(LogArgument *args) {
 #ifdef _WIN32
     static __declspec(thread) unsigned long tid = 0;
     if (tid == 0) tid = GetCurrentThreadId();
@@ -50,9 +49,9 @@ void log_default_print(LogArgument* args) {
     if (tid == 0) tid = static_cast<unsigned long>(pthread_self());
     constexpr char delimiter = '/';
 #endif
-    const char* last_slash = NULL;
-    const char* display_file = NULL;
-    char time_buffer[64] = { 0 };
+    const char *last_slash = NULL;
+    const char *display_file = NULL;
+    char time_buffer[64] = {0};
 
     last_slash = strrchr(args->file, delimiter);
     if (last_slash == NULL) {
@@ -81,14 +80,10 @@ void log_default_print(LogArgument* args) {
         strcpy(time_buffer, "error:strftime");
     }
 
-    fprintf(stderr,
-        "[%s.%03u %5lu %c] %s (%s:%d)\n",
-        time_buffer,
-        (int)(now.tv_usec / 1000),  // millisecond
-        tid,
-        g_level_string[static_cast<int>(args->level)],
-        args->message,
-        display_file, args->line);
+    fprintf(stderr, "[%s.%03u %5lu %c] %s (%s:%d)\n", time_buffer,
+            (int)(now.tv_usec / 1000),  // millisecond
+            tid, g_level_char[static_cast<int>(args->level)], args->message, display_file,
+            args->line);
 
     fflush(stderr);
 }
@@ -96,36 +91,17 @@ void log_default_print(LogArgument* args) {
 
 // ---------------------------
 
-void LogInit(void) {
-#ifndef NDEBUG
-    LogSetLevel(LogLevel::kLogLevelDebug);
-#else
-    LogSetLevel(LogLevel::kLogLevelError);
-#endif
-    g_level_string[static_cast<int>(LogLevel::kLogLevelDebug)] = 'D';
-    g_level_string[static_cast<int>(LogLevel::kLogLevelInfo)] = 'I';
-    g_level_string[static_cast<int>(LogLevel::kLogLevelError)] = 'E';
-}
-
 void LogSetLevel(LogLevel level) {
     g_min_level.Store((intptr_t)level);
 }
 
-void LogSetTransferFunction(LogTransferFunction func) {
+void LogSetPrintCallback(LogPrintCallback func) {
     g_log_function.Store((intptr_t)func);
 }
 
-void LogRestoreDefault() {
-    g_log_function.Store((intptr_t)log_default_print);
-}
+void LogFormatPrint(const char *file, int line, LogLevel level, const char *format, ...) {
 
-void LogFormatPrint(
-                    const char* file,
-                    int line,
-                    LogLevel level,
-                    const char* format, ...) {
-
-    char* message = NULL;
+    char *message = NULL;
     va_list args;
     va_start(args, format);
 
@@ -137,7 +113,7 @@ void LogFormatPrint(
     }
 
     size_t buff_len = (size_t)ret + 1;
-    message = (char*)Malloc(buff_len);
+    message = (char *)malloc(buff_len);
     va_start(args, format);
     ret = vsnprintf_s(message, buff_len, _TRUNCATE, format, args);
     va_end(args);
@@ -154,8 +130,8 @@ void LogFormatPrint(
         tmp.line = line;
         tmp.level = level;
         tmp.message = message;
-        ((LogTransferFunction)g_log_function.Load())(&tmp);
+        ((LogPrintCallback)g_log_function.Load())(&tmp);
     }
-    Free(message);
+    free(message);
 }
-} // namespace raptor
+}  // namespace raptor

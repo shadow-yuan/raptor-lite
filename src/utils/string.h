@@ -23,15 +23,15 @@
 extern "C" {
 #endif
 
-char* raptor_strdup(const char* src);
-int raptor_asprintf(char** strp, const char* format, ...);
+char *raptor_strdup(const char *src);
+int raptor_asprintf(char **strp, const char *format, ...);
 
 #ifdef _WIN32
 /** Returns a string allocated with gpr_malloc that contains a UTF-8
  * formatted error message, corresponding to the error messageid.
  * Use in conjunction with GetLastError() et al.
  */
-char* raptor_format_message(int messageid);
+char *raptor_format_message(int messageid);
 #endif
 
 #ifdef __cplusplus

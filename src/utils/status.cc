@@ -16,30 +16,30 @@
  *
  */
 
-#include "util/status.h"
+#include "raptor-lite/utils/status.h"
 #include <string.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
 #include <utility>
+#include "src/utils/string.h"
 
 namespace raptor {
 Status::Status()
     : Status(0, std::string()) {}
 
-Status::Status(const std::string& msg)
-    : Status(-1, msg) {
-}
+Status::Status(const std::string &msg)
+    : Status(-1, msg) {}
 
-Status::Status(int err_code, const std::string& err_msg)
-    : _error_code(err_code), _message(err_msg) {
-}
+Status::Status(int err_code, const std::string &err_msg)
+    : _error_code(err_code)
+    , _message(err_msg) {}
 
-Status::Status(const Status& oth)
-    : _error_code(oth._error_code), _message(oth._message)
-{}
+Status::Status(const Status &oth)
+    : _error_code(oth._error_code)
+    , _message(oth._message) {}
 
-Status& Status::operator= (const Status& oth) {
+Status &Status::operator=(const Status &oth) {
     if (this != &oth) {
         _error_code = oth._error_code;
         _message = oth._message;
@@ -47,12 +47,12 @@ Status& Status::operator= (const Status& oth) {
     return *this;
 }
 
-Status::Status(Status&& other) {
+Status::Status(Status &&other) {
     _error_code = std::move(other._error_code);
     _message = std::move(other._message);
 }
 
-Status& Status::operator=(Status&& other) {
+Status &Status::operator=(Status &&other) {
     _error_code = std::move(other._error_code);
     _message = std::move(other._message);
     return *this;
@@ -71,48 +71,48 @@ std::string Status::ToString() const {
         return std::string("No error");
     }
 
-    char* text = nullptr;
-    raptor_asprintf(&text, "%s: error code is %d.", _message.c_str(), _error_code);
+    char *text = nullptr;
+    raptor_asprintf(&text, "%s: error code is %d.", _message.begin(), _error_code);
     std::string rsp(text);
-    raptor::Free(text);
+    free(text);
     return rsp;
 }
 
-void Status::AppendMessage(const std::string& msg) {
-    _message.append(msg);
+void Status::AppendMessage(const std::string &msg) {
+    _message = _message + Slice(msg);
 }
 
-bool Status::operator==(const Status& other) const {
+bool Status::operator==(const Status &other) const {
     return _error_code == other.ErrorCode();
 }
 
-bool Status::operator!=(const Status& other) const {
+bool Status::operator!=(const Status &other) const {
     return _error_code != other.ErrorCode();
 }
 
-RefCountedPtr<Status> MakeStatusFromStaticString(const char* msg) {
+RefCountedPtr<Status> MakeStatusFromStaticString(const char *msg) {
     return MakeRefCounted<Status>(msg);
 }
 
-RefCountedPtr<Status> MakeStatusFromPosixError(const char* api) {
+RefCountedPtr<Status> MakeStatusFromPosixError(const char *api) {
     int err = errno;
-    char* text = nullptr;
+    char *text = nullptr;
     raptor_asprintf(&text, "%s: %s", api, strerror(err));
     RefCountedPtr<Status> obj = MakeRefCounted<Status>(err, text);
-    raptor::Free(text);
+    free(text);
     return obj;
 }
 
 #ifdef _WIN32
-RefCountedPtr<Status> MakeStatusFromWindowsError(int err, const char* api) {
-    char* message = raptor_format_message(err);
+RefCountedPtr<Status> MakeStatusFromWindowsError(int err, const char *api) {
+    char *message = raptor_format_message(err);
 
-    char* text = nullptr;
+    char *text = nullptr;
     raptor_asprintf(&text, "%s: %s", api, message);
 
     RefCountedPtr<Status> obj = MakeRefCounted<Status>(err, text);
-    raptor::Free(message);
-    raptor::Free(text);
+    free(message);
+    free(text);
     return obj;
 }
 #endif

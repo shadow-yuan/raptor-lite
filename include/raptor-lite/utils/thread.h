@@ -16,73 +16,71 @@
  *
  */
 
-#ifndef __RAPTOR_UTIL_THREAD__
-#define __RAPTOR_UTIL_THREAD__
+#ifndef __RAPTOR_LITE_UTILS_THREAD__
+#define __RAPTOR_LITE_UTILS_THREAD__
 
 #include <stddef.h>
 #include <functional>
 
 namespace raptor {
 
-class IThreadService {
+class ThreadInterface {
 public:
-    virtual ~IThreadService() {}
+    virtual ~ThreadInterface() {}
     virtual void Start() = 0;
     virtual void Join() = 0;
 };
 
-/*
-    Thread executor, allows to bring a custom parameter,
-    which can be used to distinguish different threads,
-    or just set nullptr.
-*/
-using ThreadExecutor = std::function<void(void*)>;
-
 class Thread {
 public:
+    using Callback = std::function<void(void *)>;
+
     class Options {
     public:
-        Options() : _joinable(true), _stack_size(0) {}
+        Options()
+            : _joinable(true)
+            , _stack_size(0) {}
 
-        Options& SetJoinable(bool joinable) {
+        Options &SetJoinable(bool joinable) {
             _joinable = joinable;
             return *this;
         }
 
-        bool Joinable() const { return _joinable; }
+        bool Joinable() const {
+            return _joinable;
+        }
 
-        Options& SetStackSize(size_t size) {
+        Options &SetStackSize(size_t size) {
             _stack_size = size;
             return *this;
         }
 
-        size_t StackSize() const { return _stack_size; }
+        size_t StackSize() const {
+            return _stack_size;
+        }
 
     private:
         bool _joinable;
         size_t _stack_size;
-    }; // class Options
+    };  // class Options
 
     Thread();
-    Thread(
-        const char* thread_name,
-        ThreadExecutor, void* arg,
-        bool* success = nullptr, const Options& options = Options());
+    Thread(const char *thread_name, Thread::Callback cb, void *arg, bool *success = nullptr,
+           const Options &options = Options());
 
     ~Thread() = default;
 
-    Thread(const Thread&) = delete;
-    Thread& operator= (const Thread&) = delete;
+    Thread(const Thread &) = delete;
+    Thread &operator=(const Thread &) = delete;
 
     // movable construction
-    Thread(Thread && oth);
-    Thread& operator= (Thread && oth);
+    Thread(Thread &&oth);
+    Thread &operator=(Thread &&oth);
 
     void Start();
     void Join();
 
 private:
-
     enum State {
         kNull,
         kAlive,
@@ -91,10 +89,10 @@ private:
         kFailed,
     };
 
-    IThreadService* _impl;
+    ThreadInterface *_impl;
     State _state;
 };
 
 }  // namespace raptor
 
-#endif  // __RAPTOR_UTIL_THREAD__
+#endif  // __RAPTOR_LITE_UTILS_THREAD__

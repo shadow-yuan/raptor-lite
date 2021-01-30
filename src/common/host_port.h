@@ -18,7 +18,7 @@
 #ifndef __RAPTOR_CORE_HOST_PORT__
 #define __RAPTOR_CORE_HOST_PORT__
 
-#include "util/string_view.h"
+#include "src/utils/string_view.h"
 
 namespace raptor {
 
@@ -31,8 +31,7 @@ namespace raptor {
    (excluding the final '\0'), and *out points to a string.
 
    In the unlikely event of an error, returns -1 and sets *out to NULL. */
-int JoinHostPort(
-    UniquePtr<char>* out, const char* host, int port);
+int JoinHostPort(UniquePtr<char> *out, const char *host, int port);
 
 /** Given a name in the form "host:port" or "[ho:st]:port", split into hostname
    and port number.
@@ -47,8 +46,8 @@ int JoinHostPort(
 
    Return true on success, false on failure. Guarantees *host and *port are
    cleared on failure. */
-bool SplitHostPort(StringView name, UniquePtr<char>* host, UniquePtr<char>* port);
-bool SplitHostPort(StringView name, StringView* host, StringView* port);
+bool SplitHostPort(StringView name, UniquePtr<char> *host, UniquePtr<char> *port);
+bool SplitHostPort(StringView name, StringView *host, StringView *port);
 
 }  // namespace raptor
 

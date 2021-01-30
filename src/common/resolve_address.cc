@@ -16,25 +16,21 @@
  *
  */
 
-#include "core/resolve_address.h"
+#include "src/common/resolve_address.h"
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <memory>
 
-#include "core/host_port.h"
-#include "core/sockaddr.h"
+#include "raptor-lite/utils/log.h"
+#include "raptor-lite/utils/useful.h"
+#include "src/common/host_port.h"
+#include "src/common/sockaddr.h"
+#include "src/utils/string.h"
+#include "src/utils/string_view.h"
 
-#include "util/alloc.h"
-#include "util/log.h"
-#include "util/string.h"
-#include "util/string_view.h"
-#include "util/useful.h"
-
-raptor_error raptor_blocking_resolve_address(
-                                const char* name,
-                                const char* default_port,
-                                raptor_resolved_addresses** addresses) {
+raptor_error raptor_blocking_resolve_address(const char *name, const char *default_port,
+                                             raptor_resolved_addresses **addresses) {
 
     struct addrinfo hints;
     struct addrinfo *result = nullptr, *resp;
@@ -69,7 +65,7 @@ raptor_error raptor_blocking_resolve_address(
     s = getaddrinfo(host.get(), port.get(), &hints, &result);
     if (s != 0) {
         /* Retry if well-known service name is recognized */
-        const char* svc[][2] = {{"http", "80"}, {"https", "443"}};
+        const char *svc[][2] = {{"http", "80"}, {"https", "443"}};
         for (i = 0; i < RAPTOR_ARRAY_SIZE(svc); i++) {
             if (strcmp(port.get(), svc[i][0]) == 0) {
                 s = getaddrinfo(host.get(), svc[i][1], &hints, &result);
@@ -84,14 +80,14 @@ raptor_error raptor_blocking_resolve_address(
     }
 
     /* Success path: set addrs non-NULL, fill it in */
-    *addresses = static_cast<raptor_resolved_addresses*>(
-        raptor::Malloc(sizeof(raptor_resolved_addresses)));
+    *addresses =
+        static_cast<raptor_resolved_addresses *>(malloc(sizeof(raptor_resolved_addresses)));
     (*addresses)->naddrs = 0;
     for (resp = result; resp != nullptr; resp = resp->ai_next) {
         (*addresses)->naddrs++;
     }
-    (*addresses)->addrs = static_cast<raptor_resolved_address*>(
-        raptor::Malloc(sizeof(raptor_resolved_address) * (*addresses)->naddrs));
+    (*addresses)->addrs = static_cast<raptor_resolved_address *>(
+        malloc(sizeof(raptor_resolved_address) * (*addresses)->naddrs));
 
     i = 0;
     for (resp = result; resp != nullptr; resp = resp->ai_next) {
@@ -107,9 +103,9 @@ done:
     return err;
 }
 
-void raptor_resolved_addresses_destroy(raptor_resolved_addresses* addrs) {
+void raptor_resolved_addresses_destroy(raptor_resolved_addresses *addrs) {
     if (addrs != nullptr) {
-        raptor::Free(addrs->addrs);
+        free(addrs->addrs);
     }
-    raptor::Free(addrs);
+    free(addrs);
 }

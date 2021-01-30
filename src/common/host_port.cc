@@ -16,13 +16,13 @@
  *
  */
 
-#include "core/host_port.h"
+#include "src/common/host_port.h"
 #include <string.h>
-#include "util/string.h"
+#include "src/utils/string.h"
 
 namespace raptor {
-int JoinHostPort(UniquePtr<char>* out, const char* host, int port) {
-    char* tmp;
+int JoinHostPort(UniquePtr<char> *out, const char *host, int port) {
+    char *tmp;
     int ret;
     if (host[0] != '[' && strchr(host, ':') != nullptr) {
         /* IPv6 literals must be enclosed in brackets. */
@@ -36,8 +36,7 @@ int JoinHostPort(UniquePtr<char>* out, const char* host, int port) {
 }
 
 namespace {
-bool DoSplitHostPort(StringView name, StringView* host, StringView* port,
-                     bool* has_port) {
+bool DoSplitHostPort(StringView name, StringView *host, StringView *port, bool *has_port) {
     *has_port = false;
     if (name[0] == '[') {
         /* Parse a bracketed host, typically an IPv6 literal. */
@@ -66,8 +65,7 @@ bool DoSplitHostPort(StringView name, StringView* host, StringView* port,
         }
     } else {
         size_t colon = name.find(':');
-        if (colon != StringView::npos &&
-            name.find(':', colon + 1) == StringView::npos) {
+        if (colon != StringView::npos && name.find(':', colon + 1) == StringView::npos) {
             /* Exactly 1 colon.  Split into host:port. */
             *host = name.substr(0, colon);
             *port = name.substr(colon + 1, name.size() - colon - 1);
@@ -82,7 +80,7 @@ bool DoSplitHostPort(StringView name, StringView* host, StringView* port,
 }
 }  // namespace
 
-bool SplitHostPort(StringView name, StringView* host, StringView* port) {
+bool SplitHostPort(StringView name, StringView *host, StringView *port) {
     bool has_port = false;
 
     host->clear();
@@ -91,7 +89,7 @@ bool SplitHostPort(StringView name, StringView* host, StringView* port) {
     return DoSplitHostPort(name, host, port, &has_port);
 }
 
-bool SplitHostPort(StringView name, UniquePtr<char>* host, UniquePtr<char>* port) {
+bool SplitHostPort(StringView name, UniquePtr<char> *host, UniquePtr<char> *port) {
     StringView host_view;
     StringView port_view;
 

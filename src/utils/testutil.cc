@@ -28,21 +28,20 @@
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "util/testutil.h"
+#include "raptor-lite/utils/testutil.h"
 #include <vector>
 
-namespace raptor {
 namespace test {
 namespace {
 struct Test {
-  const char* base;
-  const char* name;
-  void (*func)();
+    const char *base;
+    const char *name;
+    void (*func)();
 };
-std::vector<Test>* tests;
+std::vector<Test> *tests;
 }  // namespace
 
-bool RegisterTest(const char* base, const char* name, void (*func)()) {
+bool RegisterTest(const char *base, const char *name, void (*func)()) {
     if (tests == nullptr) {
         tests = new std::vector<Test>;
     }
@@ -58,7 +57,7 @@ int RunAllTests() {
     int num = 0;
     if (tests != nullptr) {
         for (size_t i = 0; i < tests->size(); i++) {
-            const Test& t = (*tests)[i];
+            const Test &t = (*tests)[i];
             fprintf(stderr, "==== Test %s.%s\n", t.base, t.name);
             (*t.func)();
             ++num;
@@ -69,4 +68,3 @@ int RunAllTests() {
 }
 
 }  // namespace test
-}  // namespace raptor
