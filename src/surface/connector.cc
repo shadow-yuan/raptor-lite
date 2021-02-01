@@ -16,62 +16,17 @@
  *
  */
 
-#include "raptor/client.h"
-#ifdef _WIN32
-#include "core/windows/tcp_client.h"
-#else
-#include "core/linux/tcp_client.h"
-#endif
-
-#include "util/log.h"
-#include "util/status.h"
+#include "raptor-lite/impl/connector.h"
+#include "raptor-lite/impl/property.h"
 
 namespace raptor {
-Client::Client(IClientReceiver* service) {
-    _impl = new TcpClient(service);
+
+Connector *CreateConnector(const Property &p) {
+    // TODO
 }
 
-Client::~Client() {
-    delete _impl;
+void DestoryConnector(Connector *c) {
+    delete c;
 }
 
-bool Client::Init() {
-    raptor_error e = _impl->Init();
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("client: init (%s)", e->ToString().c_str());
-        return false;
-    }
-    return true;
-}
-
-void Client::SetProtocol(IProtocol* proto) {
-    _impl->SetProtocol(proto);
-}
-
-bool Client::Connect(const char* addr, size_t timeout_ms) {
-    raptor_error e = _impl->Connect(addr, timeout_ms);
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("client: connect (%s)", e->ToString().c_str());
-        return false;
-    }
-    return true;
-}
-
-bool Client::Send(const void* buff, size_t len) {
-    return _impl->Send(buff, len);
-}
-
-void Client::Shutdown() {
-    _impl->Shutdown();
-}
-
-} // namespace raptor
-
-raptor::ITcpClient* RaptorCreateClient(raptor::IClientReceiver* c) {
-    if (!c) return nullptr;
-    return new raptor::Client(c);
-}
-
-void RaptorReleaseClient(raptor::ITcpClient* client) {
-    if (client) delete client;
-}
+}  // namespace raptor
