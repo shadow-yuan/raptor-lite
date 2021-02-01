@@ -1,23 +1,41 @@
-#ifndef __RAPTOR_IMPL_CONNECTOR__
-#define __RAPTOR_IMPL_CONNECTOR__
+#ifndef __RAPTOR_LITE_CONNECTOR__
+#define __RAPTOR_LITE_CONNECTOR__
 
 #include <stddef.h>
 #include <stdint.h>
 #include <string>
 
 namespace raptor {
+class Endpoint;
+class Property;
+class ConnectorHandler {
+public:
+    virtual ~ConnectorHandler() {}
+
+    /*
+     * socket property:
+     *   1. SocketNoSIGPIPE     (bool)
+     *   2. SocketReuseAddress  (bool)
+     *   3. SocketRecvTimeout   (int)
+     *   4. SocketSendTimeout   (int)
+     */
+    virtual void OnConnect(Endpoint *ep, Property *settings);
+};
+
 class Connector {
 public:
-    ~Connector();
     virtual ~Connector() {}
-
     virtual bool Start() = 0;
     virtual void Shutdown() = 0;
-
     virtual bool Connect(const std::string &addr) = 0;
-    virtual bool SendRawMsg(uint64_t cid, const void *buff, size_t len) = 0;
-    virtual bool Close(uint64_t cid) = 0;
 };
+
+/*
+ * Property:
+ *   1. ConnectorHandler (required)
+ */
+Connector *CreateConnector(const Property &p);
+void DestoryConnector(Connector *);
 }  // namespace raptor
 
-#endif  // __RAPTOR_IMPL_CONNECTOR__
+#endif  // __RAPTOR_LITE_CONNECTOR__

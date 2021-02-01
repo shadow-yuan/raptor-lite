@@ -245,3 +245,59 @@ int raptor_sockaddr_set_port(const raptor_resolved_address *resolved_addr, int p
         return 0;
     }
 }
+
+int raptor_sockaddr_get_ip(const raptor_resolved_address *resolved_addr, char *dst, size_t size) {
+    raptor_resolved_address addr_normalized;
+    char ntop_buf[INET6_ADDRSTRLEN];
+    const raptor_sockaddr *addr;
+    const void *ip = nullptr;
+    uint32_t sin6_scope_id = 0;
+    int ret = 0;
+
+    if (raptor_sockaddr_is_v4mapped(resolved_addr, &addr_normalized)) {
+        resolved_addr = &addr_normalized;
+    }
+    addr = reinterpret_cast<const raptor_sockaddr *>(resolved_addr->addr);
+    if (addr->sa_family == AF_INET) {
+        const raptor_sockaddr_in *addr4 = reinterpret_cast<const raptor_sockaddr_in *>(addr);
+        ip = &addr4->sin_addr;
+    } else if (addr->sa_family == AF_INET6) {
+        const raptor_sockaddr_in6 *addr6 = reinterpret_cast<const raptor_sockaddr_in6 *>(addr);
+        ip = &addr6->sin6_addr;
+        sin6_scope_id = addr6->sin6_scope_id;
+    }
+    if (ip != nullptr &&
+        raptor_inet_ntop(addr->sa_family, ip, ntop_buf, sizeof(ntop_buf)) != nullptr) {
+        raptor::UniquePtr<char> tmp_out;
+
+        if (sin6_scope_id != 0) {
+            char *host_with_scope;
+            /* Enclose sin6_scope_id with the format defined in RFC 6784 section 2. */
+            ret = raptor_asprintf(&host_with_scope, "%s%%25%u", ntop_buf, sin6_scope_id);
+            if (ret > static_cast<int>(size)) {
+                memcpy(dst, host_with_scope, size);
+                ret = size;
+            } else if (ret > 0) {
+                memcpy(dst, host_with_scope, ret);
+            } else {
+                ret = 0;
+            }
+            free(host_with_scope);
+        } else {
+            memcpy(dst, ntop_buf, INET6_ADDRSTRLEN);
+            ret = INET6_ADDRSTRLEN;
+        }
+        return ret;
+    }
+    return 0;
+}
+
+int raptor_get_local_sockaddr(uint64_t fd, raptor_resolved_address *local) {
+    local->len = sizeof(local->addr);
+    memset(local->addr, 0, local->len);
+#ifdef _WIN32
+    return getsockname((SOCKET)fd, (struct sockaddr *)local->addr, (int *)&local->len);
+#else
+    return getsockname((int)fd, (struct sockaddr *)local->addr, (socklen_t *)&local->len);
+#endif
+}

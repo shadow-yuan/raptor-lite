@@ -73,4 +73,13 @@ int raptor_sockaddr_set_port(const raptor_resolved_address *resolved_addr, int p
 /* Return the IP port number of a sockaddr */
 int raptor_sockaddr_get_port(const raptor_resolved_address *resolved_addr);
 
+/* Returns the number of bytes actually copied */
+int raptor_sockaddr_get_ip(const raptor_resolved_address *resolved_addr, char *dst, size_t size);
+
+/* Get the local address of the connection indicated by fd
+ * On success, zero is returned.  On error, -1 is returned,
+ * and errno is set appropriately.
+ */
+int raptor_get_local_sockaddr(uint64_t fd, raptor_resolved_address *out);
+
 #endif  // __RAPTOR_CORE_SOCKET_UTIL__

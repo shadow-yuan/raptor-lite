@@ -16,22 +16,26 @@
  *
  */
 
-#ifndef __RAPTOR_LITE_ENDPOINT__
-#define __RAPTOR_LITE_ENDPOINT__
-
+#ifndef __RAPTOR_COMMON_ENDPOINT_IMPL__
+#define __RAPTOR_COMMON_ENDPOINT_IMPL__
 #include <stddef.h>
 #include <stdint.h>
 #include <memory>
-#include <string>
+
+#include "src/common/resolve_address.h"
 
 namespace raptor {
 class Container;
-class Slice;
-class EndpointImpl;
-class Endpoint final {
+
+class EndpointImpl final : public std::enable_shared_from_this<EndpointImpl> {
 public:
-    explicit Endpoint(std::shared_ptr<EndpointImpl> impl);
-    ~Endpoint();
+    EndpointImpl(uint64_t fd, raptor_resolved_address *addr);
+    ~EndpointImpl();
+
+    void SetConnection(uint64_t connection_id);
+    void SetContainer(Container *container);
+
+    std::shared_ptr<EndpointImpl> GetEndpoint();
 
     uint64_t ConnectionId() const;
 
@@ -49,8 +53,12 @@ public:
     uint16_t RemotePort() const;
 
 private:
-    std::shared_ptr<EndpointImpl> _impl;
+    uint64_t _socket_fd;
+    uint64_t _connection_id;
+    Container *_container;
+    raptor_resolved_address _address;
 };
+
 }  // namespace raptor
 
-#endif  // __RAPTOR_LITE_ENDPOINT__
+#endif  // __RAPTOR_COMMON_ENDPOINT_IMPL__

@@ -19,16 +19,12 @@
 #ifndef __RAPTOR_LITE_H__
 #define __RAPTOR_LITE_H__
 
+#include <raptor-lite/impl/acceptor.h>
 #include <raptor-lite/impl/connector.h>
+#include <raptor-lite/impl/container.h>
 #include <raptor-lite/impl/endpoint.h>
 #include <raptor-lite/impl/handler.h>
 #include <raptor-lite/impl/property.h>
 #include <raptor-lite/impl/server.h>
-
-raptor::Server *RaptorCreateServer(const raptor::Property &property);
-raptor::Connector *RaptorCreateConnector(const raptor::Property &property);
-
-void RaptorDestoryServer(raptor::Server *);
-void RaptorDestoryConnector(raptor::Connector *);
 
 #endif  // __RAPTOR_LITE_H__

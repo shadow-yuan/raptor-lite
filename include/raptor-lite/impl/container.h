@@ -16,26 +16,32 @@
  *
  */
 
-#ifndef __RAPTOR_LITE_SERVER__
-#define __RAPTOR_LITE_SERVER__
+#ifndef __RAPTOR_LITE_CONTAINER__
+#define __RAPTOR_LITE_CONTAINER__
 
 #include <stddef.h>
 #include <stdint.h>
-#include <string>
 
 namespace raptor {
-class TcpServer {
+class Endpoint;
+class Property;
+class Container {
 public:
-    virtual ~TcpServer() {}
-    virtual bool AddListening(const std::string &addr) = 0;
+    virtual ~Container() {}
     virtual bool Start() = 0;
     virtual void Shutdown() = 0;
-    virtual bool SendMsg(uint64_t cid, const void *buff, size_t len) = 0;
-    virtual bool Close(uint64_t cid) = 0;
+    virtual void AttachEndpoint(Endpoint *) = 0;
+    virtual bool SendMsg(Endpoint *ep, void *data, size_t len) = 0;
 };
 
-TcpServer *CreateTcpServer();
-void DestoryTcpServer(TcpServer *);
+/*
+ * Property:
+ *   1. ProtocolHandler (optional)
+ *   2. MessageHandler  (required)
+ *   3. HeartbeatHandler(optional)
+ *   4. EventHandler    (optional)
+ */
+Container *CreateContainer(const Property &p);
+void DestoryContainer(Container *);
 }  // namespace raptor
-
-#endif  // __RAPTOR_LITE_SERVER__
+#endif  // __RAPTOR_LITE_CONTAINER__

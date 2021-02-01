@@ -16,26 +16,44 @@
  *
  */
 
-#ifndef __RAPTOR_LITE_SERVER__
-#define __RAPTOR_LITE_SERVER__
+#ifndef __RAPTOR_LITE_ACCEPTOR__
+#define __RAPTOR_LITE_ACCEPTOR__
 
 #include <stddef.h>
 #include <stdint.h>
 #include <string>
 
 namespace raptor {
-class TcpServer {
+class Endpoint;
+class Property;
+class AcceptorHandler {
 public:
-    virtual ~TcpServer() {}
-    virtual bool AddListening(const std::string &addr) = 0;
-    virtual bool Start() = 0;
-    virtual void Shutdown() = 0;
-    virtual bool SendMsg(uint64_t cid, const void *buff, size_t len) = 0;
-    virtual bool Close(uint64_t cid) = 0;
+    virtual ~AcceptorHandler() {}
+
+    /*
+     * socket property:
+     *   1. SocketNoSIGPIPE     (bool)
+     *   2. SocketReuseAddress  (bool)
+     *   3. SocketRecvTimeout   (int)
+     *   4. SocketSendTimeout   (int)
+     */
+    virtual void OnAccept(Endpoint *ep, Property *settings);
 };
 
-TcpServer *CreateTcpServer();
-void DestoryTcpServer(TcpServer *);
+class Acceptor {
+public:
+    virtual ~Acceptor() {}
+    virtual bool Start() = 0;
+    virtual void Shutdown() = 0;
+    virtual bool AddListening(const std::string &addr) = 0;
+};
+
+/*
+ * Property:
+ *   1. AcceptorHandler (required)
+ */
+Acceptor *CreateAcceptor(const Property &p);
+void DestoryAcceptor(Acceptor *);
 }  // namespace raptor
 
-#endif  // __RAPTOR_LITE_SERVER__
+#endif  // __RAPTOR_LITE_ACCEPTOR__

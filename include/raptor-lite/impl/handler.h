@@ -16,37 +16,28 @@
  *
  */
 
-#ifndef __RAPTOR_IMPL_HANDLER__
-#define __RAPTOR_IMPL_HANDLER__
+#ifndef __RAPTOR_LITE_HANDLER__
+#define __RAPTOR_LITE_HANDLER__
 
 #include <stddef.h>
 
-#include "raptor-lite/utils/slice.h"
-
 namespace raptor {
-
-class Slice;
 class Event;
+class Endpoint;
+class Slice;
 
 class ProtocolHandler {
 public:
     virtual ~ProtocolHandler() {}
 
     // return -1: error;  0: need more data; > 0 : pack_len
-    virtual int CheckPackageLength(const void *data, size_t len) = 0;
+    virtual int OnCheckPackageLength(const void *data, size_t len) = 0;
 };
 
 class MessageHandler {
 public:
     virtual ~MessageHandler() {}
-    virtual int OnMessage(const Endpoint &ep, const Slice &slice) = 0;
-};
-
-class ConnectionHandler {
-public:
-    virtual ~ConnectionHandler() {}
-    virtual int OnConnected(const Endpoint &ep) = 0;
-    virtual int OnClosed(const Endpoint &ep) = 0;
+    virtual int OnMessage(Endpoint *ep, Slice *msg) = 0;
 };
 
 class HeartbeatHandler {
@@ -63,8 +54,8 @@ public:
 class EventHandler {
 public:
     virtual ~EventHandler() {}
-    virtual void OnEvent(const Endpoint &ep, const Event &event) = 0;
+    virtual void OnEvent(Endpoint *ep, Event *event) = 0;
 };
 
 }  // namespace raptor
-#endif  // __RAPTOR_IMPL_HANDLER__
+#endif  // __RAPTOR_LITE_HANDLER__
