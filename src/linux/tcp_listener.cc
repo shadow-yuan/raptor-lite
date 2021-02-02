@@ -23,6 +23,9 @@
 #include "src/utils/log.h"
 #include "src/utils/list_entry.h"
 #include "src/linux/socket_setting.h"
+#include "src/common/endpoint_impl.h"
+#include "raptor-lite/impl/endpoint.h"
+#include "raptor-lite/impl/property.h"
 
 namespace raptor {
 
@@ -34,9 +37,12 @@ struct ListenerObject {
     raptor_dualstack_mode mode;
 };
 
-TcpListener::TcpListener(internal::IAcceptor *cp)
-    : _acceptor(cp)
-    , _shutdown(true) {
+TcpListener::TcpListener(AcceptorHandler *handler)
+    : _handler(handler)
+    , _shutdown(true)
+    , _number_of_thread(0)
+    , _running_threads(0)
+    , _threads(nullptr) {
     RAPTOR_LIST_INIT(&_head);
 }
 
@@ -44,26 +50,46 @@ TcpListener::~TcpListener() {
     RAPTOR_ASSERT(_shutdown);
 }
 
-RefCountedPtr<Status> TcpListener::Init() {
+RefCountedPtr<Status> TcpListener::Init(int threads) {
     if (!_shutdown) {
-        return RAPTOR_ERROR_NONE;
+        return RAPTOR_ERROR_FROM_STATIC_STRING("TcpAcceptor is already running");
     }
-    _shutdown = false;
     auto e = _epoll.create();
     if (e != RAPTOR_ERROR_NONE) {
         return e;
     }
+    _shutdown = false;
+    _number_of_thread = threads;
+    _threads = new Thread[threads];
 
-    _thd =
-        Thread("listen", std::bind(&TcpListener::DoPolling, this, std::placeholders::_1), nullptr);
+    for (int i = 0; i < threads; i++) {
+        bool success = false;
 
+        _threads[i] =
+            Thread("Linux:listen", std::bind(&TcpListener::DoPolling, this, std::placeholders::_1),
+                   &success);
+
+        if (!success) {
+            break;
+        }
+        _running_threads++;
+    }
+
+    if (_running_threads == 0) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("TcpAcceptor failed to create thread");
+    }
     return RAPTOR_ERROR_NONE;
 }
 
-bool TcpListener::StartListening() {
-    if (_shutdown) return false;
-    _thd.Start();
-    return true;
+RefCountedPtr<Status> TcpListener::StartListening() {
+    if (_shutdown) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("TcpAcceptor is not initialized");
+    }
+
+    for (int i = 0; i < _running_threads; i++) {
+        _threads[i].Start();
+    }
+    return RAPTOR_ERROR_NONE;
 }
 
 void TcpListener::Shutdown() {
@@ -142,11 +168,11 @@ void TcpListener::ProcessEpollEvents(void *ptr, uint32_t events) {
         raptor_resolved_address client;
         int sock_fd = AcceptEx(sp->listen_fd, &client, 1, 1);
         if (sock_fd > 0) {
-            raptor_set_socket_no_sigpipe_if_possible(sock_fd);
-            raptor_set_socket_reuse_addr(sock_fd, 1);
-            raptor_set_socket_rcv_timeout(sock_fd, 5000);
-            raptor_set_socket_snd_timeout(sock_fd, 5000);
-            _acceptor->OnNewConnection(sock_fd, sp->port, &client);
+            // TODO(SHADOW): sp->port not use
+            Endpoint ep(std::make_shared<EndpointImpl>(sock_fd, &client));
+            Property property;
+            _handler->OnAccept(&ep, &property);
+            ProcessProperty(sock_fd, property);
             break;
         }
         if (errno == EINTR) {
@@ -167,5 +193,38 @@ int TcpListener::AcceptEx(int sockfd, raptor_resolved_address *resolved_addr, in
     resolved_addr->len = sizeof(resolved_addr->addr);
     return accept4(sockfd, reinterpret_cast<raptor_sockaddr *>(resolved_addr->addr),
                    &resolved_addr->len, flags);
+}
+
+void TcpListener::ProcessProperty(int fd, const Property &p) {
+    /*
+        raptor_set_socket_no_sigpipe_if_possible(sock_fd);
+        raptor_set_socket_reuse_addr(sock_fd, 1);
+        raptor_set_socket_rcv_timeout(sock_fd, 5000);
+        raptor_set_socket_snd_timeout(sock_fd, 5000);
+    */
+    bool SocketNoSIGPIPE = false;
+    if (p.CheckValue<bool>("SocketNoSIGPIPE", SocketNoSIGPIPE) && SocketNoSIGPIPE) {
+        raptor_set_socket_no_sigpipe_if_possible(fd);
+    }
+
+    bool SocketReuseAddress = false;
+    if (p.CheckValue<bool>("SocketReuseAddress", SocketReuseAddress) && SocketReuseAddress) {
+        raptor_set_socket_reuse_addr(fd, 1);
+    }
+
+    bool SocketLowLatency = false;
+    if (p.CheckValue<bool>("SocketLowLatency", SocketLowLatency) && SocketLowLatency) {
+        raptor_set_socket_low_latency(fd, 1);
+    }
+
+    int SocketSendTimeout = 0;
+    if (p.CheckValue<int>("SocketSendTimeout", SocketSendTimeout) && SocketSendTimeout > 0) {
+        raptor_set_socket_snd_timeout(fd, SocketSendTimeout);
+    }
+
+    int SocketRecvTimeout = 0;
+    if (p.CheckValue<int>("SocketRecvTimeout", SocketRecvTimeout) && SocketRecvTimeout > 0) {
+        raptor_set_socket_rcv_timeout(fd, SocketRecvTimeout);
+    }
 }
 }  // namespace raptor

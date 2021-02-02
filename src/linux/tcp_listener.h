@@ -21,33 +21,39 @@
 
 #include "src/linux/epoll.h"
 #include "src/common/resolve_address.h"
-#include "src/common/service.h"
 #include "src/utils/list_entry.h"
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/sync.h"
 #include "raptor-lite/utils/thread.h"
+#include "raptor-lite/impl/acceptor.h"
 
 namespace raptor {
+class AcceptorHandler;
 struct ListenerObject;
+
 class TcpListener final {
 public:
-    explicit TcpListener(internal::IAcceptor *cp);
+    explicit TcpListener(AcceptorHandler *handler);
     ~TcpListener();
 
-    RefCountedPtr<Status> Init();
+    RefCountedPtr<Status> Init(int threads = 1);
     RefCountedPtr<Status> AddListeningPort(const raptor_resolved_address *addr);
-    bool StartListening();
+    RefCountedPtr<Status> StartListening();
     void Shutdown();
 
 private:
     void DoPolling(void *ptr);
     void ProcessEpollEvents(void *ptr, uint32_t events);
     int AcceptEx(int fd, raptor_resolved_address *addr, int nonblock, int cloexec);
+    void ProcessProperty(int fd, const Property &p);
 
-    internal::IAcceptor *_acceptor;  // not owned it
+private:
+    AcceptorHandler *_handler;
     bool _shutdown;
+    int _number_of_thread;
+    int _running_threads;
 
-    Thread _thd;
+    Thread *_threads;
     Epoll _epoll;
     list_entry _head;
     Mutex _mtex;

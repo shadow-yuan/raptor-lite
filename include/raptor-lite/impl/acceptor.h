@@ -34,10 +34,11 @@ public:
 
     /*
      * socket property:
-     *   1. SocketNoSIGPIPE     (bool)
-     *   2. SocketReuseAddress  (bool)
+     *   1. SocketNoSIGPIPE     (bool, default: true)
+     *   2. SocketReuseAddress  (bool, default: true)
      *   3. SocketRecvTimeout   (int)
      *   4. SocketSendTimeout   (int)
+     *   5. SocketLowLatency    (bool, default: true)
      */
     virtual void OnAccept(Endpoint *ep, Property *settings);
 };
@@ -45,15 +46,15 @@ public:
 class Acceptor {
 public:
     virtual ~Acceptor() {}
-    virtual bool Start() = 0;
+    virtual raptor_error Start() = 0;
     virtual void Shutdown() = 0;
-    virtual bool AddListening(const std::string &addr) = 0;
+    virtual raptor_error AddListening(const std::string &addr) = 0;
 };
 
 /*
  * Property:
  *   1. AcceptorHandler (required)
- *   2. ListenThreadNum (optional)
+ *   2. ListenThreadNum (optional, default: 1)
  */
 raptor_error CreateAcceptor(const Property &p, Acceptor **out);
 void DestoryAcceptor(Acceptor *);

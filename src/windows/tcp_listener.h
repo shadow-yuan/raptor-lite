@@ -19,47 +19,51 @@
 #ifndef __RAPTOR_CORE_WINDOWS_TCP_LISTENER__
 #define __RAPTOR_CORE_WINDOWS_TCP_LISTENER__
 
-#include "core/windows/iocp.h"
-#include "core/service.h"
-#include "core/sockaddr.h"
-#include "util/list_entry.h"
-#include "util/sync.h"
-#include "util/thread.h"
+#include <string>
+
+#include "src/windows/iocp.h"
+#include "src/common/sockaddr.h"
+#include "src/utils/list_entry.h"
+#include "raptor-lite/utils/sync.h"
+#include "raptor-lite/utils/thread.h"
 
 namespace raptor {
-
+class AcceptorHandler;
 struct ListenerObject;
+class Property;
 
 class TcpListener final {
 public:
-    explicit TcpListener(internal::IAcceptor* service);
+    explicit TcpListener(AcceptorHandler *service);
     ~TcpListener();
 
-    raptor_error Init(int max_threads = 1);
-    raptor_error AddListeningPort(const raptor_resolved_address* addr);
-    bool Start();
+    raptor_error Init(int threads = 1);
+    raptor_error AddListeningPort(const raptor_resolved_address *addr);
+    raptor_error Start();
     void Shutdown();
 
 private:
-    void WorkThread(void* ptr);
-    raptor_error StartAcceptEx(struct ListenerObject*);
-    void ParsingNewConnectionAddress(
-        const ListenerObject* sp, raptor_resolved_address* remote);
+    void WorkThread(void *ptr);
+    raptor_error StartAcceptEx(struct ListenerObject *);
+    void ParsingNewConnectionAddress(const ListenerObject *sp, raptor_resolved_address *remote);
 
     raptor_error GetExtensionFunction(SOCKET fd);
+    void ProcessProperty(SOCKET fd, const Property &p);
 
-    internal::IAcceptor* _service;
+    AcceptorHandler *_service;
     bool _shutdown;
-    Thread* _threads;
-    list_entry _head;
-    Iocp _iocp;
-    raptor_mutex_t _mutex;  // for list_entry
-    OVERLAPPED _exit;
+    int _number_of_thread;
+    int _running_threads;
     LPFN_ACCEPTEX _AcceptEx;
     LPFN_GETACCEPTEXSOCKADDRS _GetAcceptExSockAddrs;
-    int _max_threads;
+
+    Thread *_threads;
+    list_entry _head;
+    Iocp _iocp;
+    Mutex _mutex;  // for list_entry
+    OVERLAPPED _exit;
 };
 
-} // namespace raptor
+}  // namespace raptor
 
 #endif  // __RAPTOR_CORE_WINDOWS_TCP_LISTENER__

@@ -123,6 +123,16 @@ public:
         return static_cast<T>(it->second);
     }
 
+    template <typename T = int>
+    bool CheckValue(const std::string &key, T &value) const {
+        auto it = _tbl.find(key);
+        if (it == _tbl.end()) {
+            return false;
+        }
+        value = static_cast<T>(it->second);
+        return true;
+    }
+
 private:
     std::unordered_map<std::string, uintptr_t> _tbl;
 };

@@ -29,6 +29,7 @@
 #include "src/windows/tcp_listener.h"
 #endif
 #include "raptor-lite/utils/log.h"
+#include "src/common/resolve_address.h"
 
 namespace raptor {
 class AcceptorAdaptor : public Acceptor {
@@ -36,10 +37,10 @@ class AcceptorAdaptor : public Acceptor {
 public:
     explicit AcceptorAdaptor(AcceptorHandler *handler);
     ~AcceptorAdaptor();
-    raptor_error Init();
-    bool Start() override;
+    raptor_error Init(int threads = 1);
+    raptor_error Start() override;
     void Shutdown() override;
-    bool AddListening(const std::string &addr) override;
+    raptor_error AddListening(const std::string &addr) override;
 
 private:
     std::unique_ptr<TcpListener> _impl;
@@ -50,11 +51,11 @@ AcceptorAdaptor::AcceptorAdaptor(AcceptorHandler *handler)
 
 AcceptorAdaptor::~AcceptorAdaptor() {}
 
-raptor_error AcceptorAdaptor::Init() {
-    return _impl->Init();
+raptor_error AcceptorAdaptor::Init(int threads) {
+    return _impl->Init(threads);
 }
 
-bool AcceptorAdaptor::Start() {
+raptor_error AcceptorAdaptor::Start() {
     return _impl->Start();
 }
 
@@ -62,13 +63,19 @@ void AcceptorAdaptor::Shutdown() {
     _impl->Shutdown();
 }
 
-bool AcceptorAdaptor::AddListening(const std::string &addr) {
-    raptor_error e = _impl->AddListeningPort(addr);
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("AcceptorAdaptor::AddListening %s", e->ToString().c_str());
-        return false;
+raptor_error AcceptorAdaptor::AddListening(const std::string &addr) {
+    raptor_resolved_addresses *addrs = nullptr;
+    raptor_error e = raptor_blocking_resolve_address(addr.c_str(), nullptr, &addrs);
+    if (e == RAPTOR_ERROR_NONE) {
+        for (size_t i = 0; i < addrs->naddrs; i++) {
+            e = _impl->AddListeningPort(&addrs->addrs[i]);
+            if (e != RAPTOR_ERROR_NONE) {
+                break;
+            }
+        }
     }
-    return true;
+    raptor_resolved_addresses_destroy(addrs);
+    return e;
 }
 
 /*
@@ -89,7 +96,7 @@ raptor_error CreateAcceptor(const Property &p, Acceptor **out) {
     }
 
     AcceptorAdaptor *adaptor = new AcceptorAdaptor(handler);
-    ratpro_error e = adaptor->Init(ListenThreadNum);
+    raptor_error e = adaptor->Init(ListenThreadNum);
     if (e == RAPTOR_ERROR_NONE) {
         *out = adaptor;
     }
