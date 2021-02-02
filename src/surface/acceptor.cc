@@ -16,109 +16,92 @@
  *
  */
 
-#ifndef __RAPTOR_SURFACE_ADAPTER__
-#define __RAPTOR_SURFACE_ADAPTER__
+#ifndef __RAPTOR_SURFACE_ACCEPTOR__
+#define __RAPTOR_SURFACE_ACCEPTOR__
 
 #include <memory>
 
-#include "raptor/protocol.h"
-#include "raptor/service.h"
+#include "raptor-lite/impl/acceptor.h"
+#include "raptor-lite/impl/property.h"
+#ifdef __GNUC__
+#include "src/linux/tcp_listener.h"
+#else
+#include "src/windows/tcp_listener.h"
+#endif
+#include "raptor-lite/utils/log.h"
 
 namespace raptor {
-class TcpServer;
-class TcpClient;
-} // namespace raptor
+class AcceptorAdaptor : public Acceptor {
 
-class RaptorServerAdapter final : public raptor::IServerReceiver
-                                , public raptor::ITcpServer {
 public:
-    RaptorServerAdapter();
-    ~RaptorServerAdapter();
-
-    // ITcpServer impl
-    bool Init(const RaptorOptions* options) override;
-    void SetProtocol(raptor::IProtocol* proto) override;
-    bool AddListening(const char* addr) override;
+    explicit AcceptorAdaptor(AcceptorHandler *handler);
+    ~AcceptorAdaptor();
+    raptor_error Init();
     bool Start() override;
     void Shutdown() override;
-    bool Send(ConnectionId cid, const void* buff, size_t len) override;
-    bool SendWithHeader(ConnectionId cid, const void* hdr, size_t hdr_len, const void* data, size_t data_len) override;
-    bool CloseConnection(ConnectionId cid) override;
-    bool SetUserData(ConnectionId id, void* userdata) override;
-    bool GetUserData(ConnectionId id, void** userdata) override;
-    bool SetExtendInfo(ConnectionId id, uint64_t info) override;
-    bool GetExtendInfo(ConnectionId id, uint64_t* info) override;
-    int  GetPeerString(ConnectionId cid, char* output, int len) override;
-
-    // IServerReceiver impl
-	void OnConnected(ConnectionId id, const char* peer) override;
-    void OnMessageReceived(ConnectionId id, const void* buff, size_t len) override;
-    void OnClosed(ConnectionId id) override;
-
-    // callbacks (c.h)
-    void SetCallbacks(
-                    raptor_server_callback_connection_arrived on_arrived,
-                    raptor_server_callback_message_received on_message_received,
-                    raptor_server_callback_connection_closed on_closed
-                    );
+    bool AddListening(const std::string &addr) override;
 
 private:
-    std::shared_ptr<raptor::TcpServer> _impl;
-    raptor_server_callback_connection_arrived _on_arrived_cb;
-    raptor_server_callback_message_received   _on_message_received_cb;
-    raptor_server_callback_connection_closed  _on_closed_cb;
+    std::unique_ptr<TcpListener> _impl;
 };
 
-class RaptorClientAdapter final : public raptor::ITcpClient
-                                , public raptor::IClientReceiver {
-public:
-    RaptorClientAdapter();
-    ~RaptorClientAdapter();
+AcceptorAdaptor::AcceptorAdaptor(AcceptorHandler *handler)
+    : _impl(new TcpListener(handler)) {}
 
-    // ITcpClient impl
-    bool Init() override;
-    void SetProtocol(raptor::IProtocol* proto) override;
-    bool Connect(const char* addr, size_t timeout_ms) override;
-    bool Send(const void* buff, size_t len) override;
-    void Shutdown() override;
+AcceptorAdaptor::~AcceptorAdaptor() {}
 
-    // IClientReceiver impl
-    void OnConnectResult(bool success) override;
-    void OnMessageReceived(const void* buff, size_t len) override;
-    void OnClosed() override;
+raptor_error AcceptorAdaptor::Init() {
+    return _impl->Init();
+}
 
-    void SetCallbacks(
-                    raptor_client_callback_connect_result on_connect_result,
-                    raptor_client_callback_message_received on_message_received,
-                    raptor_client_callback_connection_closed on_closed
-                    );
+bool AcceptorAdaptor::Start() {
+    return _impl->Start();
+}
 
-private:
-    std::shared_ptr<raptor::TcpClient> _impl;
-    raptor_client_callback_connect_result    _on_connect_result_cb;
-    raptor_client_callback_message_received  _on_message_received_cb;
-    raptor_client_callback_connection_closed _on_closed_cb;
-};
+void AcceptorAdaptor::Shutdown() {
+    _impl->Shutdown();
+}
 
-class RaptorProtocolAdapter final : public raptor::IProtocol {
-public:
-    RaptorProtocolAdapter();
-    ~RaptorProtocolAdapter() {}
+bool AcceptorAdaptor::AddListening(const std::string &addr) {
+    raptor_error e = _impl->AddListeningPort(addr);
+    if (e != RAPTOR_ERROR_NONE) {
+        log_error("AcceptorAdaptor::AddListening %s", e->ToString().c_str());
+        return false;
+    }
+    return true;
+}
 
-    // Get the max header size of current protocol
-    size_t GetMaxHeaderSize() override;
+/*
+ * Property:
+ *   1. AcceptorHandler (required)
+ *   2. ListenThreadNum (optional)
+ */
+raptor_error CreateAcceptor(const Property &p, Acceptor **out) {
+    AcceptorHandler *handler =
+        reinterpret_cast<AcceptorHandler *>(p.GetValue<intptr_t>("AcceptorHandler"));
 
-    // return -1: error;  0: need more data; > 0 : pack_len
-    int CheckPackageLength(const void* data, size_t len) override;
+    int ListenThreadNum = p.GetValue("ListenThreadNum", 1);
 
-    void SetCallbacks(
-        raptor_protocol_callback_get_max_header_size get_max_header_size,
-        raptor_protocol_callback_check_package_length check_package_length
-    );
+    *out = nullptr;
 
-private:
-    raptor_protocol_callback_get_max_header_size _get_max_header_size;
-    raptor_protocol_callback_check_package_length _check_package_length;
-};
+    if (!handler) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("Missing AcceptorHandler");
+    }
 
-#endif  // __RAPTOR_SURFACE_ADAPTER__
+    AcceptorAdaptor *adaptor = new AcceptorAdaptor(handler);
+    ratpro_error e = adaptor->Init(ListenThreadNum);
+    if (e == RAPTOR_ERROR_NONE) {
+        *out = adaptor;
+    }
+    return e;
+}
+
+void DestoryAcceptor(Acceptor *a) {
+    if (a) {
+        a->Shutdown();
+        delete a;
+    }
+}
+}  // namespace raptor
+
+#endif  // __RAPTOR_SURFACE_ACCEPTOR__

@@ -23,6 +23,8 @@
 #include <stdint.h>
 #include <string>
 
+#include "raptor-lite/utils/status.h"
+
 namespace raptor {
 class Endpoint;
 class Property;
@@ -51,8 +53,9 @@ public:
 /*
  * Property:
  *   1. AcceptorHandler (required)
+ *   2. ListenThreadNum (optional)
  */
-Acceptor *CreateAcceptor(const Property &p);
+raptor_error CreateAcceptor(const Property &p, Acceptor **out);
 void DestoryAcceptor(Acceptor *);
 }  // namespace raptor
 

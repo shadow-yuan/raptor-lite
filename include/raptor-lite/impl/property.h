@@ -32,7 +32,7 @@ public:
     PropertyEntry()
         : PropertyEntry(std::string(), uintptr_t(0)) {}
 
-    ~PropertyEntry() {}
+    ~PropertyEntry() = default;
 
     PropertyEntry(const std::string &k, bool v)
         : PropertyEntry(std::string(k), uintptr_t(v ? 1 : 0)) {}
@@ -53,23 +53,27 @@ public:
     PropertyEntry(const std::string &k, int16_t v)
         : PropertyEntry(std::string(k), uintptr_t(v)) {}
 
-    PropertyEntry(const std::string &k, int32_t v)
-        : PropertyEntry(std::string(k), uintptr_t(v)) {}
-
-    PropertyEntry(const std::string &k, int64_t v)
-        : PropertyEntry(std::string(k), uintptr_t(v)) {}
-
     PropertyEntry(const std::string &k, uint8_t v)
         : PropertyEntry(std::string(k), uintptr_t(v)) {}
 
     PropertyEntry(const std::string &k, uint16_t v)
         : PropertyEntry(std::string(k), uintptr_t(v)) {}
 
+#if defined(__x86_64__) || defined(_WIN64)
+    // intptr_t = int64_t, uintptr_t = uint64_t
+    PropertyEntry(const std::string &k, int32_t v)
+        : PropertyEntry(std::string(k), uintptr_t(v)) {}
+
     PropertyEntry(const std::string &k, uint32_t v)
+        : PropertyEntry(std::string(k), uintptr_t(v)) {}
+#else
+    // intptr_t = int32_t, uintptr_t = uint32_t
+    PropertyEntry(const std::string &k, int64_t v)
         : PropertyEntry(std::string(k), uintptr_t(v)) {}
 
     PropertyEntry(const std::string &k, uint64_t v)
         : PropertyEntry(std::string(k), uintptr_t(v)) {}
+#endif
 
     PropertyEntry(const PropertyEntry &o)
         : PropertyEntry(o._kv.first, o._kv.second) {}
@@ -110,8 +114,8 @@ public:
         }
     }
 
-    template <typename T>
-    T GetValue(const std::string &key, T default_value = T()) {
+    template <typename T = int>
+    T GetValue(const std::string &key, T default_value = T()) const {
         auto it = _tbl.find(key);
         if (it == _tbl.end()) {
             return default_value;
