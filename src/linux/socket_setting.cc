@@ -157,6 +157,13 @@ void raptor_set_socket_shutdown(int fd) {
     close(fd);
 }
 
+int raptor_get_socket_error(int fd) {
+    int error_code = 0;
+    int opt_len = sizeof(error_code);
+    getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&error_code, (socklen_t)&opt_len);
+    return error_code;
+}
+
 static int raptor_is_unix_socket(const raptor_resolved_address *resolved_addr) {
     const raptor_sockaddr *addr = reinterpret_cast<const raptor_sockaddr *>(resolved_addr->addr);
     return addr->sa_family == AF_UNIX;

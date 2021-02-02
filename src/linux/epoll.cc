@@ -49,18 +49,25 @@ RefCountedPtr<Status> Epoll::create() {
     return RAPTOR_ERROR_NONE;
 }
 
-int Epoll::ctl(int fd, epoll_event* ev, int op) {
+void Epoll::shutdown() {
+    if (_epoll_fd != -1) {
+        close(_epoll_fd);
+        _epoll_fd = -1;
+    }
+}
+
+int Epoll::ctl(int fd, epoll_event *ev, int op) {
     return epoll_ctl(_epoll_fd, op, fd, ev);
 }
 
-int Epoll::add(int fd, void* data, uint32_t events) {
+int Epoll::add(int fd, void *data, uint32_t events) {
     epoll_event ev;
     ev.events = events;
     ev.data.ptr = data;
     return ctl(fd, &ev, EPOLL_CTL_ADD);
 }
 
-int Epoll::modify(int fd, void* data, uint32_t events) {
+int Epoll::modify(int fd, void *data, uint32_t events) {
     epoll_event ev;
     ev.events = events;
     ev.data.ptr = data;
@@ -78,7 +85,7 @@ int Epoll::polling(int timeout) {
     return epoll_wait(_epoll_fd, _events, MAX_EPOLL_EVENTS, timeout);
 }
 
-struct epoll_event* Epoll::get_event(size_t index) {
+struct epoll_event *Epoll::get_event(size_t index) {
     return &_events[index];
 }
 }  // namespace raptor

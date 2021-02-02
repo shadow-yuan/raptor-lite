@@ -47,6 +47,9 @@ raptor_error raptor_set_socket_ipv6_only(int fd, int only);
 // shutdown fd
 void raptor_set_socket_shutdown(int fd);
 
+// get SO_ERROR value
+int raptor_get_socket_error(int fd);
+
 #define DEFAULT_CLIENT_TCP_USER_TIMEOUT_MS 20000 /* 20 seconds */
 #define DEFAULT_SERVER_TCP_USER_TIMEOUT_MS 20000 /* 20 seconds */
 

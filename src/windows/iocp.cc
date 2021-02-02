@@ -16,12 +16,11 @@
  *
  */
 
-#include "core/windows/iocp.h"
+#include "src/windows/iocp.h"
 
 namespace raptor {
 Iocp::Iocp()
-    : _handle(NULL) {
-}
+    : _handle(NULL) {}
 
 Iocp::~Iocp() {
     if (_handle) {
@@ -31,7 +30,7 @@ Iocp::~Iocp() {
 
 RefCountedPtr<Status> Iocp::create(DWORD max_threads) {
     if (!_handle) {
-        _handle =  CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, max_threads);
+        _handle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, max_threads);
         if (_handle == NULL) {
             return RAPTOR_WINDOWS_ERROR(GetLastError(), "CreateIoCompletionPort");
         }
@@ -39,22 +38,27 @@ RefCountedPtr<Status> Iocp::create(DWORD max_threads) {
     return RAPTOR_ERROR_NONE;
 }
 
-bool Iocp::add(SOCKET sock, void* CompletionKey) {
+void Iocp::shutdown() {
+    if (_handle) {
+        CloseHandle(_handle);
+        _handle = nullptr;
+    }
+}
+
+bool Iocp::add(SOCKET sock, void *CompletionKey) {
     if (!_handle) return false;
     HANDLE h = CreateIoCompletionPort((HANDLE)sock, _handle, (ULONG_PTR)CompletionKey, 0);
     return (h != NULL);
 }
 
-bool Iocp::polling(
-        DWORD* NumberOfBytesTransferred,
-        PULONG_PTR CompletionKey,
-        LPOVERLAPPED *lpOverlapped, DWORD timeout_ms) {
-    BOOL r = GetQueuedCompletionStatus(
-        _handle, NumberOfBytesTransferred, CompletionKey, lpOverlapped, timeout_ms);
+bool Iocp::polling(DWORD *NumberOfBytesTransferred, PULONG_PTR CompletionKey,
+                   LPOVERLAPPED *lpOverlapped, DWORD timeout_ms) {
+    BOOL r = GetQueuedCompletionStatus(_handle, NumberOfBytesTransferred, CompletionKey,
+                                       lpOverlapped, timeout_ms);
     return (r != FALSE);
 }
 
-void Iocp::post(void* key, LPOVERLAPPED overlapped) {
+void Iocp::post(void *key, LPOVERLAPPED overlapped) {
     PostQueuedCompletionStatus(_handle, 0, (ULONG_PTR)key, overlapped);
 }
-} // namespace raptor
+}  // namespace raptor

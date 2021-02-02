@@ -20,7 +20,7 @@
 #define __RAPTOR_CORE_WINDOWS_IOCP__
 
 #include <winsock2.h>
-#include "util/status.h"
+#include "raptor-lite/utils/status.h"
 
 namespace raptor {
 enum class IocpEventType {
@@ -39,6 +39,8 @@ public:
     Iocp();
     ~Iocp();
     RefCountedPtr<Status> create(DWORD max_threads = 0);
+    void shutdown();
+
     bool add(SOCKET sock, void* CompletionKey);
     bool polling(
         DWORD* NumberOfBytesTransferred,

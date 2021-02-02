@@ -30,6 +30,8 @@ public:
     ~Epoll();
 
     RefCountedPtr<Status> create();
+    void shutdown();
+    
     int add(int fd, void *data, uint32_t events);
     int modify(int fd, void *data, uint32_t events);
     int remove(int fd, uint32_t events);
@@ -39,7 +41,7 @@ public:
     struct epoll_event *get_event(size_t index);
 
 private:
-    enum { MAX_EPOLL_EVENTS = 100 };
+    enum { MAX_EPOLL_EVENTS = 256 };
 
     int ctl(int fd, epoll_event *ev, int op);
     int _epoll_fd;
