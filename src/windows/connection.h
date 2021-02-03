@@ -21,37 +21,40 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <memory>
 
-#include "core/cid.h"
-#include "core/resolve_address.h"
-#include "core/service.h"
-#include "core/slice/slice.h"
-#include "core/slice/slice_buffer.h"
-#include "core/windows/iocp.h"
-#include "util/sync.h"
+#include "src/common/cid.h"
+#include "src/common/resolve_address.h"
+#include "src/common/service.h"
+#include "raptor-lite/utils/slice.h"
+#include "raptor-lite/utils/slice_buffer.h"
+#include "src/windows/iocp.h"
+#include "raptor-lite/utils/sync.h"
+#include "src/common/endpoint_impl.h"
+#include "raptor-lite/impl/handler.h"
 
 namespace raptor {
-class IProtocol;
 class Connection final {
     friend class TcpServer;
+    friend class TcpContainer;
+    
 public:
-    explicit Connection(internal::INotificationTransfer* service);
+    explicit Connection(internal::INotificationTransfer *service);
     ~Connection();
 
     // Before Init, sock must be associated with iocp
-    void Init(ConnectionId cid, SOCKET sock, const raptor_resolved_address* addr);
-    void SetProtocol(IProtocol* p);
+    void Init(std::shared_ptr<EndpointImpl> obj);
+    void SetProtocol(ProtocolHandler *p);
     void Shutdown(bool notify);
 
-    bool SendWithHeader(
-        const void* hdr, size_t hdr_len, const void* data, size_t data_len);
+    bool SendWithHeader(const void *hdr, size_t hdr_len, const void *data, size_t data_len);
     bool IsOnline();
 
-    void SetUserData(void* ptr);
-    void GetUserData(void** ptr) const;
+    void SetUserData(void *ptr);
+    void GetUserData(void **ptr) const;
     void SetExtendInfo(uint64_t data);
-    void GetExtendInfo(uint64_t& data) const;
-    int GetPeerString(char* buf, int buf_size);
+    void GetExtendInfo(uint64_t &data) const;
+    int GetPeerString(char *buf, int buf_size);
 
 private:
     // IOCP Event
@@ -60,10 +63,10 @@ private:
 
     // if success return the number of parsed packets
     // otherwise return -1 (protocol error)
-    int  ParsingProtocol();
+    int ParsingProtocol();
 
     // return true if reach recv buffer tail.
-    bool ReadSliceFromRecvBuffer(size_t read_size, Slice& s);
+    bool ReadSliceFromRecvBuffer(size_t read_size, Slice &s);
 
     bool AsyncSend();
     bool AsyncRecv();
@@ -71,10 +74,10 @@ private:
 private:
     enum { DEFAULT_TEMP_SLICE_COUNT = 2 };
 
-    internal::INotificationTransfer * _service;
-    IProtocol* _proto;
+    internal::INotificationTransfer *_service;
+    ProtocolHandler *_proto;
+    std::shared_ptr<EndpointImpl> _endpoint;
 
-    ConnectionId _cid;
     bool _send_pending;
 
     SOCKET _fd;
@@ -94,7 +97,7 @@ private:
     Mutex _snd_mtx;
 
     uint64_t _user_data;
-    void* _extend_ptr;
+    void *_extend_ptr;
 };
-} // namespace raptor
+}  // namespace raptor
 #endif  // __RAPTOR_CORE_WINDOWS_CONNECTION__

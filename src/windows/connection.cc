@@ -16,22 +16,18 @@
  *
  */
 
-#include "core/windows/connection.h"
+#include "src/windows/connection.h"
 #include <string.h>
-#include "core/socket_util.h"
-#include "core/windows/socket_setting.h"
-#include "raptor/protocol.h"
-#include "util/alloc.h"
-#include "util/log.h"
-#include "util/useful.h"
+#include "src/common/socket_util.h"
+#include "src/windows/socket_setting.h"
+#include "raptor-lite/utils/log.h"
+#include "raptor-lite/utils/useful.h"
 
 namespace raptor {
-Connection::Connection(internal::INotificationTransfer* service)
+Connection::Connection(internal::INotificationTransfer *service)
     : _service(service)
     , _proto(nullptr)
-    , _send_pending(false)
-    , _cid(core::InvalidConnectionId)
-    , _fd(INVALID_SOCKET) {
+    , _send_pending(false) {
 
     memset(&_send_overlapped.overlapped, 0, sizeof(_send_overlapped.overlapped));
     memset(&_recv_overlapped.overlapped, 0, sizeof(_recv_overlapped.overlapped));
@@ -46,23 +42,22 @@ Connection::Connection(internal::INotificationTransfer* service)
 
 Connection::~Connection() {}
 
-void Connection::Init(ConnectionId cid, SOCKET sock, const raptor_resolved_address* addr) {
-    _cid = cid;
-    _fd = sock;
-    _addr = *addr;
+void Connection::Init(std::shared_ptr<EndpointImpl> obj) {
+    _endpoint = obj;
+
     _send_pending = false;
 
     _user_data = 0;
     _extend_ptr = 0;
 
-    for(size_t i = 0; i < DEFAULT_TEMP_SLICE_COUNT; i++) {
+    for (size_t i = 0; i < DEFAULT_TEMP_SLICE_COUNT; i++) {
         _tmp_buffer[i] = MakeSliceByDefaultSize();
     }
 
-    char* output = nullptr;
+    char *output = nullptr;
     int bytes = raptor_sockaddr_to_string(&output, &_addr, 1);
     if (output && bytes > 0) {
-        _addr_str = Slice(output, static_cast<size_t>(bytes+1));
+        _addr_str = Slice(output, static_cast<size_t>(bytes + 1));
     }
     if (output) {
         Free(output);
@@ -70,7 +65,7 @@ void Connection::Init(ConnectionId cid, SOCKET sock, const raptor_resolved_addre
     _service->OnConnectionArrived(cid, &_addr_str);
 }
 
-void Connection::SetProtocol(IProtocol* p) {
+void Connection::SetProtocol(IProtocol *p) {
     _proto = p;
 }
 
@@ -102,8 +97,8 @@ void Connection::Shutdown(bool notify) {
     _extend_ptr = 0;
 }
 
-bool Connection::SendWithHeader(
-        const void* hdr, size_t hdr_len, const void* data, size_t data_len) {
+bool Connection::SendWithHeader(const void *hdr, size_t hdr_len, const void *data,
+                                size_t data_len) {
     if (!IsOnline()) return false;
     AutoMutex g(&_snd_mtx);
     if (hdr != nullptr && hdr_len > 0) {
@@ -135,7 +130,7 @@ bool Connection::AsyncSend() {
         if (prepare_send_length + s.Length() > MAX_PACKAGE_SIZE) {
             break;
         }
-        wsa_snd_buf[i].buf = reinterpret_cast<char*>(s.Buffer());
+        wsa_snd_buf[i].buf = reinterpret_cast<char *>(s.Buffer());
         wsa_snd_buf[i].len = static_cast<ULONG>(s.Length());
         prepare_send_length += s.Length();
         wsa_buf_count++;
@@ -159,12 +154,13 @@ bool Connection::AsyncRecv() {
     WSABUF wsa_rcv_buf[DEFAULT_TEMP_SLICE_COUNT];
 
     for (size_t i = 0; i < DEFAULT_TEMP_SLICE_COUNT; i++) {
-        wsa_rcv_buf[i].buf = reinterpret_cast<char*>(_tmp_buffer[i].Buffer());
+        wsa_rcv_buf[i].buf = reinterpret_cast<char *>(_tmp_buffer[i].Buffer());
         wsa_rcv_buf[i].len = static_cast<ULONG>(_tmp_buffer[i].Length());
     }
 
     // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsarecv
-    int ret = WSARecv(_fd, wsa_rcv_buf, DEFAULT_TEMP_SLICE_COUNT, NULL, &dwFlag, &_recv_overlapped.overlapped, NULL);
+    int ret = WSARecv(_fd, wsa_rcv_buf, DEFAULT_TEMP_SLICE_COUNT, NULL, &dwFlag,
+                      &_recv_overlapped.overlapped, NULL);
 
     if (ret == SOCKET_ERROR) {
         int error = WSAGetLastError();
@@ -215,7 +211,7 @@ bool Connection::OnRecvEvent(size_t size) {
     return AsyncRecv();
 }
 
-bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice& s) {
+bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice &s) {
     size_t cache_size = _rcv_buffer.GetBufferLength();
     if (read_size >= cache_size) {
         s = _rcv_buffer.Merge();
@@ -274,11 +270,11 @@ done:
     return package_counter;
 }
 
-void Connection::SetUserData(void* ptr) {
+void Connection::SetUserData(void *ptr) {
     _extend_ptr = ptr;
 }
 
-void Connection::GetUserData(void** ptr) const {
+void Connection::GetUserData(void **ptr) const {
     if (ptr) {
         *ptr = _extend_ptr;
     }
@@ -288,11 +284,11 @@ void Connection::SetExtendInfo(uint64_t data) {
     _user_data = data;
 }
 
-void Connection::GetExtendInfo(uint64_t& data) const {
+void Connection::GetExtendInfo(uint64_t &data) const {
     data = _user_data;
 }
 
-int Connection::GetPeerString(char* buf, int len) {
+int Connection::GetPeerString(char *buf, int len) {
     if (!IsOnline()) {
         return -1;
     }
@@ -308,4 +304,4 @@ int Connection::GetPeerString(char* buf, int len) {
     return 0;
 }
 
-} // namespace raptor
+}  // namespace raptor

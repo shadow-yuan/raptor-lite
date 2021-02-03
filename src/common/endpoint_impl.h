@@ -28,12 +28,15 @@ namespace raptor {
 class Container;
 
 class EndpointImpl final : public std::enable_shared_from_this<EndpointImpl> {
+    friend class Connection;
+
 public:
     EndpointImpl(uint64_t fd, raptor_resolved_address *addr);
     ~EndpointImpl();
 
     void SetConnection(uint64_t connection_id);
     void SetContainer(Container *container);
+    void SetListenPort(uint16_t port);
 
     std::shared_ptr<EndpointImpl> GetEndpoint();
 
@@ -41,6 +44,7 @@ public:
 
     // don't close it
     uint64_t SocketFd() const;
+    uint16_t GetListenPort() const;
 
     std::string PeerString() const;
     bool SendMsg(const Slice &slice) const;
@@ -56,6 +60,7 @@ private:
     uint64_t _socket_fd;
     uint64_t _connection_id;
     Container *_container;
+    uint16_t _listen_port;
     raptor_resolved_address _address;
 };
 

@@ -19,33 +19,32 @@
 #ifndef __RAPTOR_CORE_WINDOWS_IOCP_THREAD__
 #define __RAPTOR_CORE_WINDOWS_IOCP_THREAD__
 
-#include "core/service.h"
-#include "core/windows/iocp.h"
-#include "util/status.h"
-#include "util/thread.h"
+#include "src/common/service.h"
+#include "src/windows/iocp.h"
+#include "raptor-lite/utils/status.h"
+#include "raptor-lite/utils/thread.h"
 
 namespace raptor {
 class SendRecvThread {
 public:
-    explicit SendRecvThread(internal::IIocpReceiver* service);
+    explicit SendRecvThread(internal::IIocpReceiver *service);
     ~SendRecvThread();
     RefCountedPtr<Status> Init(size_t rs_threads, size_t kernel_threads);
     bool Start();
     void Shutdown();
-    bool Add(SOCKET sock, void* CompletionKey);
+    bool Add(SOCKET sock, void *CompletionKey);
 
 private:
     void WorkThread();
 
-    internal::IIocpReceiver* _service;
+    internal::IIocpReceiver *_service;
     bool _shutdown;
     size_t _rs_threads;
-    Thread* _threads;
+    Thread *_threads;
 
     OVERLAPPED _exit;
     Iocp _iocp;
 };
-} // namespace raptor
-
+}  // namespace raptor
 
 #endif  // __RAPTOR_CORE_WINDOWS_IOCP_THREAD__

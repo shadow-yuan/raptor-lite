@@ -153,6 +153,8 @@ void TcpConnector::WorkThread(void *) {
                 raptor_error err = RAPTOR_WINDOWS_ERROR(err_code, "IOCP_WAIT");
                 _handler->OnErrorOccurred(&endpoint, err);
             } else {
+                // update connect context
+                setsockopt(CompletionKey->fd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
                 Property property;
                 _handler->OnConnect(&endpoint, &property);
                 ProcessProperty(CompletionKey->fd, property);

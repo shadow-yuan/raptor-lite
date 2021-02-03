@@ -20,10 +20,10 @@
 #include <string.h>
 #include <memory>
 #include "src/windows/socket_setting.h"
-#include "src/windows/socket_util.h"
 #include "src/utils/list_entry.h"
 #include "raptor-lite/utils/log.h"
 #include "src/common/endpoint_impl.h"
+#include "src/common/socket_util.h"
 #include "raptor-lite/impl/endpoint.h"
 #include "raptor-lite/impl/property.h"
 #include "raptor-lite/impl/acceptor.h"
@@ -76,10 +76,10 @@ TcpListener::~TcpListener() {
     }
 }
 
-raptor_error TcpListener::Init(int max_threads) {
+raptor_error TcpListener::Init(int threads) {
     if (!_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("TcpListener is already running");
 
-    auto e = _iocp.create(max_threads);
+    auto e = _iocp.create(threads);
     if (e != RAPTOR_ERROR_NONE) {
         return e;
     }
@@ -122,7 +122,7 @@ void TcpListener::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
         _iocp.post(NULL, &_exit);
-        for (int i = 0; i < _max_threads; i++) {
+        for (int i = 0; i < _running_threads; i++) {
             _threads[i].Join();
         }
 
@@ -168,31 +168,31 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
         return e;
     }
 
-    RaptorMutexLock(&_mutex);
+    _mutex.Lock();
     std::unique_ptr<ListenerObject> node(new ListenerObject);
     node->listen_fd = listen_fd;
     node->port = port;
     node->mode = mode;
     node->addr = mapped_addr;
     if (!_iocp.add(node->listen_fd, node.get())) {
-        RaptorMutexUnlock(&_mutex);
+        _mutex.Unlock();
         return RAPTOR_ERROR_FROM_STATIC_STRING("Failed to bind iocp");
     }
     e = StartAcceptEx(node.get());
     if (e != RAPTOR_ERROR_NONE) {
-        RaptorMutexUnlock(&_mutex);
+        _mutex.Unlock();
         return e;
     }
 
     raptor_list_push_back(&_head, &node->entry);
     node.release();
-    RaptorMutexUnlock(&_mutex);
+    _mutex.Unlock();
 
     char *addr_string = nullptr;
     raptor_sockaddr_to_string(&addr_string, &mapped_addr, 0);
     log_debug("start listening on %s",
               addr_string ? addr_string : std::to_string(node->port).c_str());
-    Free(addr_string);
+    free(addr_string);
     return e;
 }
 
@@ -280,7 +280,7 @@ raptor_error TcpListener::StartAcceptEx(struct ListenerObject *sp) {
         goto failure;
     }
 
-    error = raptor_tcp_prepare_socket(sock);
+    error = raptor_tcp_prepare_socket(sock, 0);
     if (error != RAPTOR_ERROR_NONE) goto failure;
 
     /* Start the "accept" asynchronously. */

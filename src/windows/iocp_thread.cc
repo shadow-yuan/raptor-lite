@@ -16,13 +16,13 @@
  *
  */
 
-#include "core/windows/iocp_thread.h"
+#include "src/windows/iocp_thread.h"
 #include <string.h>
-#include "util/log.h"
-#include "util/time.h"
+#include "raptor-lite/utils/log.h"
+#include "src/utils/time.h"
 
 namespace raptor {
-SendRecvThread::SendRecvThread(internal::IIocpReceiver* service)
+SendRecvThread::SendRecvThread(internal::IIocpReceiver *service)
     : _service(service)
     , _shutdown(true)
     , _rs_threads(0)
@@ -48,9 +48,10 @@ RefCountedPtr<Status> SendRecvThread::Init(size_t rs_threads, size_t kernel_thre
     _rs_threads = rs_threads;
     _threads = new Thread[rs_threads];
     for (size_t i = 0; i < rs_threads; i++) {
-        _threads[i] = Thread("send/recv",
-            [](void* param) ->void {
-                SendRecvThread* p = (SendRecvThread*)param;
+        _threads[i] = Thread(
+            "send/recv",
+            [](void *param) -> void {
+                SendRecvThread *p = (SendRecvThread *)param;
                 p->WorkThread();
             },
             this);
@@ -81,23 +82,23 @@ void SendRecvThread::Shutdown() {
     }
 }
 
-bool SendRecvThread::Add(SOCKET sock, void* CompletionKey) {
+bool SendRecvThread::Add(SOCKET sock, void *CompletionKey) {
     return _iocp.add(sock, CompletionKey);
 }
 
-void SendRecvThread::WorkThread(){
+void SendRecvThread::WorkThread() {
     while (!_shutdown) {
 
         time_t current_time = Now();
         _service->OnCheckingEvent(current_time);
 
         DWORD NumberOfBytesTransferred = 0;
-        void* CompletionKey = NULL;
+        void *CompletionKey = NULL;
         LPOVERLAPPED lpOverlapped = NULL;
 
         // https://docs.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-getqueuedcompletionstatus
-        bool ret = _iocp.polling(
-            &NumberOfBytesTransferred, (PULONG_PTR)&CompletionKey, &lpOverlapped, INFINITE);
+        bool ret = _iocp.polling(&NumberOfBytesTransferred, (PULONG_PTR)&CompletionKey,
+                                 &lpOverlapped, INFINITE);
 
         if (!ret) {
 
@@ -131,7 +132,7 @@ void SendRecvThread::WorkThread(){
 
         // shutdown signal
 
-        if(lpOverlapped == &_exit) {
+        if (lpOverlapped == &_exit) {
             break;
         }
 
@@ -142,7 +143,7 @@ void SendRecvThread::WorkThread(){
             continue;
         }
 
-        OverLappedEx* ptr = (OverLappedEx*)lpOverlapped;
+        OverLappedEx *ptr = (OverLappedEx *)lpOverlapped;
         if (ptr->event == IocpEventType::kRecvEvent) {
             _service->OnRecvEvent(CompletionKey, NumberOfBytesTransferred);
         }
@@ -152,4 +153,4 @@ void SendRecvThread::WorkThread(){
     }
 }
 
-} // namespace raptor
+}  // namespace raptor

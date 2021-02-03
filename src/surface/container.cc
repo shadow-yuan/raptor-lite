@@ -16,217 +16,103 @@
  *
  */
 
-#include "surface/adapter.h"
+#include "raptor-lite/impl/container.h"
+#include <memory>
 #ifdef _WIN32
-#include "core/windows/tcp_server.h"
-#include "core/windows/tcp_client.h"
+#include "src/windows/tcp_container.h"
 #else
-#include "core/linux/tcp_server.h"
-#include "core/linux/tcp_client.h"
+#include "src/linux/tcp_container.h"
 #endif
+#include "raptor-lite/utils/status.h"
+#include "raptor-lite/impl/handler.h"
+#include "raptor-lite/impl/property.h"
 
-#include "util/log.h"
-#include "util/status.h"
-#include "util/useful.h"
+namespace raptor {
+class ContainerAdaptor : public Container {
 
-RaptorServerAdapter::RaptorServerAdapter()
-    : _impl(std::make_shared<raptor::TcpServer>(this)) {
+public:
+    explicit ContainerAdaptor(MessageHandler *handler);
+    ~ContainerAdaptor();
+
+    raptor_error Init(int rs_threads = 1);
+    void SetProtocolHandler(ProtocolHandler *p);
+    void SetHeartbeatHandler(HeartbeatHandler *h);
+    void SetEventHandler(EventHandler *e);
+
+    bool Start() override;
+    void Shutdown() override;
+    void AttachEndpoint(Endpoint *) override;
+    bool SendMsg(Endpoint *ep, const void *data, size_t len) override;
+
+private:
+    std::shared_ptr<TcpContainer> _impl;
+};
+
+ContainerAdaptor::ContainerAdaptor(MessageHandler *handler)
+    : _impl(std::make_shared<TcpContainer>(handler)) {}
+
+ContainerAdaptor::~ContainerAdaptor() {}
+
+raptor_error ContainerAdaptor::Init(int rs_threads) {
+    return _impl->Init(rs_threads);
 }
 
-RaptorServerAdapter::~RaptorServerAdapter() {}
-
-bool RaptorServerAdapter::Init(const RaptorOptions* options) {
-    raptor_error e = _impl->Init(options);
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("server adapter: init (%s)", e->ToString().c_str());
-        return false;
-    }
-    return true;
+bool ContainerAdaptor::Start() {
+    return _impl->Start();
 }
-
-void RaptorServerAdapter::SetProtocol(raptor::IProtocol* proto) {
-    _impl->SetProtocol(proto);
-}
-
-bool RaptorServerAdapter::AddListening(const char* addr) {
-    raptor_error e = _impl->AddListening(addr);
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("server adapter: add listening (%s)", e->ToString().c_str());
-        return false;
-    }
-    return true;
-}
-
-bool RaptorServerAdapter::Start() {
-    raptor_error e = _impl->Start();
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("server adapter: start (%s)", e->ToString().c_str());
-        return false;
-    }
-
-    return true;
-}
-
-void RaptorServerAdapter::Shutdown() {
+void ContainerAdaptor::Shutdown() {
     _impl->Shutdown();
 }
-
-bool RaptorServerAdapter::Send(ConnectionId cid, const void* buff, size_t len) {
-    if (!buff || len == 0) return false;
-    return _impl->Send(cid, buff, len);
+void ContainerAdaptor::AttachEndpoint(Endpoint *ep) {
+    _impl->AttachEndpoint(ep);
 }
 
-bool RaptorServerAdapter::SendWithHeader(
-    ConnectionId cid, const void* hdr, size_t hdr_len, const void* data, size_t data_len) {
-    if (!hdr || hdr_len == 0) {
-        return Send(cid, data, data_len);
+bool ContainerAdaptor::SendMsg(Endpoint *ep, const void *data, size_t len) {
+    return _impl->SendMsg(ep, data, len);
+}
+
+/*
+ * Property:
+ *   1. ProtocolHandler (optional)
+ *   2. MessageHandler  (required)
+ *   3. HeartbeatHandler(optional)
+ *   4. EventHandler    (optional)
+ *   5. RecvSendThreads (optional, default: 1)
+ */
+raptor_error CreateContainer(const Property &p, Container **out) {
+    MessageHandler *message =
+        reinterpret_cast<MessageHandler *>(p.GetValue<intptr_t>("MessageHandler", 0));
+
+    if (!message) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("Missing MessageHandler");
     }
-    return _impl->SendWithHeader(cid, hdr, hdr_len, data, data_len);
-}
 
-bool RaptorServerAdapter::CloseConnection(ConnectionId cid) {
-    return _impl->CloseConnection(cid);
-}
+    *out = nullptr;
 
-void RaptorServerAdapter::OnConnected(ConnectionId id, const char* peer) {
-    if (_on_arrived_cb) {
-        _on_arrived_cb(id, peer);
+    ProtocolHandler *proto =
+        reinterpret_cast<ProtocolHandler *>(p.GetValue<intptr_t>("ProtocolHandler", 0));
+
+    HeartbeatHandler *heartbeat =
+        reinterpret_cast<HeartbeatHandler *>(p.GetValue<intptr_t>("HeartbeatHandler", 0));
+    EventHandler *event = reinterpret_cast<EventHandler *>(p.GetValue<intptr_t>("EventHandler", 0));
+
+    int RecvSendThreads = p.GetValue("RecvSendThreads", 1);
+
+    ContainerAdaptor *adaptor = new ContainerAdaptor(message);
+    raptor_error e = adaptor->Init(RecvSendThreads);
+    if (e == RAPTOR_ERROR_NONE) {
+        *out = adaptor;
+        adaptor->SetProtocolHandler(proto);
+        adaptor->SetHeartbeatHandler(heartbeat);
+        adaptor->SetEventHandler(event);
     }
+    return e;
 }
 
-void RaptorServerAdapter::OnMessageReceived(ConnectionId id, const void* buff, size_t len) {
-    if (_on_message_received_cb) {
-        _on_message_received_cb(id, buff, len);
-    }
-}
-
-void RaptorServerAdapter::OnClosed(ConnectionId id) {
-    if (_on_closed_cb) {
-        _on_closed_cb(id);
-    }
-}
-
-// callbacks
-void RaptorServerAdapter::SetCallbacks(
-                                    raptor_server_callback_connection_arrived on_arrived,
-                                    raptor_server_callback_message_received on_message_received,
-                                    raptor_server_callback_connection_closed on_closed
-                                    ) {
-    _on_arrived_cb = on_arrived;
-    _on_message_received_cb = on_message_received;
-    _on_closed_cb = on_closed;
-}
-
-// user data
-bool RaptorServerAdapter::SetUserData(ConnectionId id, void* userdata) {
-    return _impl->SetUserData(id, userdata);
-}
-
-bool RaptorServerAdapter::GetUserData(ConnectionId id, void** userdata) {
-    return _impl->GetUserData(id, userdata);
-}
-
-bool RaptorServerAdapter::SetExtendInfo(ConnectionId id, uint64_t info) {
-    return _impl->SetExtendInfo(id, info);
-}
-
-bool RaptorServerAdapter::GetExtendInfo(ConnectionId id, uint64_t* info) {
-    uint64_t data = 0;
-    bool r = _impl->GetExtendInfo(id, data);
-    if (info) *info = data;
-    return r;
-}
-
-int RaptorServerAdapter::GetPeerString(ConnectionId cid, char* output, int len) {
-    if (!output || len <= 0) return -1;
-    return _impl->GetPeerString(cid, output, len);
-}
-// --------------------------------
-
-RaptorClientAdapter::RaptorClientAdapter()
-    : _impl(std::make_shared<raptor::TcpClient>(this)) {
-}
-
-RaptorClientAdapter::~RaptorClientAdapter() {}
-
-bool RaptorClientAdapter::Init() {
-    raptor_error e = _impl->Init();
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("client adapter: init (%s)", e->ToString().c_str());
-        return false;
-    }
-    return true;
-}
-
-void RaptorClientAdapter::SetProtocol(raptor::IProtocol* proto) {
-    _impl->SetProtocol(proto);
-}
-
-bool RaptorClientAdapter::Connect(const char* addr, size_t timeout_ms) {
-    raptor_error e = _impl->Connect(addr, timeout_ms);
-    if (e != RAPTOR_ERROR_NONE) {
-        log_error("server adapter: connect (%s)", e->ToString().c_str());
-        return false;
-    }
-    return true;
-}
-
-bool RaptorClientAdapter::Send(const void* buff, size_t len) {
-    return _impl->Send(buff, len);
-}
-
-void RaptorClientAdapter::Shutdown() {
-    _impl->Shutdown();
-}
-
-void RaptorClientAdapter::OnConnectResult(bool success) {
-    if (_on_connect_result_cb) {
-        _on_connect_result_cb(success ? 1 : 0);
+void DestoryContainer(Container *cc) {
+    if (cc) {
+        cc->Shutdown();
+        delete cc;
     }
 }
-
-void RaptorClientAdapter::OnMessageReceived(const void* buff, size_t len) {
-    if (_on_message_received_cb) {
-        _on_message_received_cb(buff, len);
-    }
-}
-
-void RaptorClientAdapter::OnClosed() {
-    if (_on_closed_cb) {
-        _on_closed_cb();
-    }
-}
-
-void RaptorClientAdapter::SetCallbacks(
-                                    raptor_client_callback_connect_result on_connect_result,
-                                    raptor_client_callback_message_received on_message_received,
-                                    raptor_client_callback_connection_closed on_closed
-                                    ) {
-    _on_connect_result_cb = on_connect_result;
-    _on_message_received_cb = on_message_received;
-    _on_closed_cb = on_closed;
-}
-
-// ----------------------------------------
-
-RaptorProtocolAdapter::RaptorProtocolAdapter() {
-    _get_max_header_size = nullptr;
-    _check_package_length = nullptr;
-}
-
-// Get the max header size of current protocol
-size_t RaptorProtocolAdapter::GetMaxHeaderSize() {
-    return _get_max_header_size();
-}
-
-// return -1: error;  0: need more data; > 0 : pack_len
-int RaptorProtocolAdapter::CheckPackageLength(const void* data, size_t len) {
-    return _check_package_length(data, len);
-}
-
-void RaptorProtocolAdapter::SetCallbacks(
-        raptor_protocol_callback_get_max_header_size cb1,
-        raptor_protocol_callback_check_package_length cb3) {
-    _get_max_header_size = cb1;
-    _check_package_length = cb3;
-}
+}  // namespace raptor

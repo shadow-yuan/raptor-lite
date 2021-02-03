@@ -21,6 +21,10 @@ void EndpointImpl::SetContainer(Container *container) {
     _container = container;
 }
 
+void EndpointImpl::SetListenPort(uint16_t port) {
+    _listen_port = port;
+}
+
 std::shared_ptr<EndpointImpl> EndpointImpl::GetEndpoint() {
     return this->shared_from_this();
 }
@@ -30,6 +34,10 @@ uint64_t EndpointImpl::ConnectionId() const {
 }
 uint64_t EndpointImpl::SocketFd() const {
     return _socket_fd;
+}
+
+uint16_t EndpointImpl::GetListenPort() const {
+    return _listen_port;
 }
 
 std::string EndpointImpl::PeerString() const {

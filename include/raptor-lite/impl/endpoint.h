@@ -29,15 +29,18 @@ class Container;
 class Slice;
 class EndpointImpl;
 class Endpoint final {
+    friend class TcpContainer;
+
 public:
     explicit Endpoint(std::shared_ptr<EndpointImpl> impl);
     ~Endpoint();
 
     uint64_t ConnectionId() const;
 
-    // don't close it
+    // Do not close fd externally
     uint64_t SocketFd() const;
 
+    uint16_t GetListenPort() const;
     std::string PeerString() const;
     bool SendMsg(const Slice &slice) const;
     bool SendMsg(void *data, size_t len) const;
