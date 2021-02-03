@@ -19,8 +19,9 @@
 #ifndef __RAPTOR_CORE_EPOLL__
 #define __RAPTOR_CORE_EPOLL__
 
-#include <sys/epoll.h>
 #include <stddef.h>
+#include <sys/epoll.h>
+
 #include "raptor-lite/utils/status.h"
 
 namespace raptor {
@@ -31,7 +32,7 @@ public:
 
     RefCountedPtr<Status> create();
     void shutdown();
-    
+
     int add(int fd, void *data, uint32_t events);
     int modify(int fd, void *data, uint32_t events);
     int remove(int fd, uint32_t events);

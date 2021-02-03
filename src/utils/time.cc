@@ -16,7 +16,7 @@
  *
  */
 
-#include "util/time.h"
+#include "src/utils/time.h"
 
 #ifdef _WIN32
 int gettimeofday(struct timeval *tp, void *tzp) {
@@ -27,8 +27,7 @@ int gettimeofday(struct timeval *tp, void *tzp) {
 
     GetSystemTimeAsFileTime(&time);
 
-    ns100 = (((int64_t)time.dwHighDateTime << 32) + time.dwLowDateTime)
-        - 116444736000000000LL;
+    ns100 = (((int64_t)time.dwHighDateTime << 32) + time.dwLowDateTime) - 116444736000000000LL;
     tp->tv_sec = static_cast<int32_t>(ns100 / 10000000);
     tp->tv_usec = static_cast<int32_t>((ns100 % 10000000) / 10);
 
@@ -41,8 +40,4 @@ int64_t GetCurrentMilliseconds() {
     gettimeofday(&tp, nullptr);
     int64_t ret = tp.tv_sec;
     return ret * 1000 + tp.tv_usec / 1000;
-}
-
-time_t Now() {
-    return time(0);
 }

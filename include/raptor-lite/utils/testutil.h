@@ -122,7 +122,7 @@ private:
         }                                                                                          \
     };                                                                                             \
     bool TCONCAT(_Test_ignored_, name) =                                                           \
-        ::raptor::test::RegisterTest(#base, #name, &TCONCAT(_Test_, name)::_RunIt);                \
+        ::test::RegisterTest(#base, #name, &TCONCAT(_Test_, name)::_RunIt);                        \
     void TCONCAT(_Test_, name)::_Run()
 
 // Register the specified test.  Typically not used directly, but

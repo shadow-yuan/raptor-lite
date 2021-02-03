@@ -38,7 +38,9 @@ public:
     void SetContainer(Container *container);
     void SetListenPort(uint16_t port);
 
-    std::shared_ptr<EndpointImpl> GetEndpoint();
+    inline std::shared_ptr<EndpointImpl> GetEndpointImpl() {
+        return this->shared_from_this();
+    }
 
     uint64_t ConnectionId() const;
 
@@ -47,20 +49,36 @@ public:
     uint16_t GetListenPort() const;
 
     std::string PeerString() const;
-    bool SendMsg(const Slice &slice) const;
-    bool SendMsg(void *data, size_t len) const;
-    bool Close() const;
 
-    const std::string &LocalIp() const;
+    // Give the endpoint to the container management.
+    // It means that the data receiving and sending work
+    // is handed over to the container to complete.
+    void BindWithContainer(Container *container);
+
+    bool SendMsg(const Slice &slice);
+    bool SendMsg(const void *data, size_t len);
+
+    // Used directly, not bind with the container
+    int SyncRecv(void *data, size_t len);
+    int SyncSend(const void *data, size_t len);
+
+    bool Close(bool notify);
+
+    std::string LocalIp() const;
     uint16_t LocalPort() const;
-    const std::string &RemoteIp() const;
+    std::string RemoteIp() const;
     uint16_t RemotePort() const;
+
+    bool IsOnline() const;
+    void SetExtInfo(uintptr_t info);
+    uintptr_t GetExtInfo() const;
 
 private:
     uint64_t _socket_fd;
     uint64_t _connection_id;
     Container *_container;
     uint16_t _listen_port;
+    uintptr_t _ext_info;
     raptor_resolved_address _address;
 };
 

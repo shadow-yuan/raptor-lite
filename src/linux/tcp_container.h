@@ -33,6 +33,7 @@
 #include "raptor-lite/utils/sync.h"
 #include "raptor-lite/impl/handler.h"
 #include "src/common/service.h"
+#include "raptor-lite/impl/container.h"
 
 namespace raptor {
 class IProtocol;
@@ -43,11 +44,12 @@ class TcpContainer : public Container,
                      public internal::INotificationTransfer {
 public:
     typedef struct {
-        int rs_thread = 1;
-        int default_container_size = 256;
-        int max_container_size = 1048576;
-        int connection_timeoutms = 60000;  // 1 min
-        bool enable_connection_timeout = false;
+        size_t mq_consumer_threads = 1;
+        size_t recv_send_threads = 1;
+        size_t default_container_size = 256;
+        size_t max_container_size = 1048576;
+        size_t connection_timeoutms = 60000;  // 1 min
+        bool not_check_connection_timeout = true;
         MessageHandler *msg_handler = nullptr;
         ProtocolHandler *proto_handler = nullptr;
         HeartbeatHandler *heartbeat_handler = nullptr;
@@ -58,34 +60,26 @@ public:
     ~TcpContainer();
 
     raptor_error Init();
-    bool Start();
-    void Shutdown();
-    void AttachEndpoint(Endpoint *);
-    bool SendMsg(Endpoint *ep, const void *data, size_t len);
-    bool CloseConnection(ConnectionId cid);
+    raptor_error Start() override;
+    void Shutdown() override;
+    raptor_error AttachEndpoint(const Endpoint &ep) override;
+    bool SendMsg(const Endpoint &ep, const void *data, size_t len) override;
+    void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
     // internal::IEpollReceiver implement
     void OnErrorEvent(void *ptr) override;
     void OnRecvEvent(void *ptr) override;
     void OnSendEvent(void *ptr) override;
-    void OnCheckingEvent(time_t current) override;
+    void OnTimeoutCheck(int64_t current_millseconds) override;
 
     // internal::INotificationTransfer impl
-    void OnConnectionArrived(ConnectionId cid, const Slice *addr);
-    void OnDataReceived(ConnectionId cid, const Slice *s) override;
-    void OnConnectionClosed(ConnectionId cid) override;
-
-    // user data
-    bool SetUserData(ConnectionId cid, void *ptr);
-    bool GetUserData(ConnectionId cid, void **ptr);
-    bool SetExtendInfo(ConnectionId cid, uint64_t data);
-    bool GetExtendInfo(ConnectionId cid, uint64_t &data);
-    int GetPeerString(ConnectionId cid, char *buf, int buf_len);
+    void OnDataReceived(const Endpoint &ep, const Slice &s) override;
+    void OnClosed(const Endpoint &ep) override;
 
 private:
     void TimeoutCheckThread(void *);
     void MessageQueueThread(void *);
-    uint32_t CheckConnectionId(ConnectionId cid) const;
+    uint32_t CheckConnectionId(uint64_t cid) const;
     void Dispatch(struct TcpMessageNode *msg);
     void DeleteConnection(uint32_t index);
     void RefreshTime(uint32_t index);
@@ -93,27 +87,27 @@ private:
 
 private:
     using TimeoutRecordMap = std::multimap<int64_t, uint32_t>;
-    using ConnectionInfo = std::pair<Connection *, TimeoutRecordMap::iterator>;
+    using ConnectionInfo = std::pair<std::shared_ptr<Connection>, TimeoutRecordMap::iterator>;
 
     bool _shutdown;
     TcpContainer::Option _option;
 
     MultiProducerSingleConsumerQueue _mpscq;
-    Thread _mq_thd;
+    Thread *_mq_threads;
     Mutex _mutex;
     ConditionVariable _cv;
     AtomicUInt32 _count;
+    int _running_threads;
 
-    std::shared_ptr<SendRecvThread> _recv_thread;
-    std::shared_ptr<SendRecvThread> _send_thread;
+    std::shared_ptr<EpollThread> _epoll_thread;
 
     Mutex _conn_mtx;
-    std::vector<ConnectionData> _mgr;
+    std::vector<ConnectionInfo> _mgr;
     // key: timeout deadline, value: index for _mgr
-    TimeoutRecord _timeout_record_list;
+    TimeoutRecordMap _timeout_records;
     std::list<uint32_t> _free_index_list;
     uint16_t _magic_number;
-    Atomic<time_t> _last_timeout_time;
+    Atomic<int64_t> _last_check_time;
 };
 
 }  // namespace raptor

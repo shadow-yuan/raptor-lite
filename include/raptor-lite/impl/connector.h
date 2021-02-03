@@ -40,8 +40,8 @@ public:
      *   4. SocketSendTimeout   (int)
      *   5. SocketLowLatency    (bool, default:true)
      */
-    virtual void OnConnect(Endpoint *ep, Property *settings);
-    virtual void OnErrorOccurred(Endpoint *ep, raptor_error desc);
+    virtual void OnConnect(const Endpoint &ep, Property &settings) = 0;
+    virtual void OnErrorOccurred(const Endpoint &ep, raptor_error desc) = 0;
 };
 
 class Connector {

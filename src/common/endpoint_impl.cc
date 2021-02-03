@@ -1,6 +1,15 @@
 #include "src/common/endpoint_impl.h"
+#include <string.h>
 #include "src/common/cid.h"
 #include "src/common/socket_util.h"
+#include "raptor-lite/impl/container.h"
+
+#ifdef _WIN32
+#include "src/windows/socket_setting.h"
+#else
+#include "src/linux/socket_setting.h"
+#endif
+#include "raptor-lite/impl/endpoint.h"
 
 namespace raptor {
 
@@ -8,6 +17,8 @@ EndpointImpl::EndpointImpl(uint64_t fd, raptor_resolved_address *addr)
     : _socket_fd(fd)
     , _connection_id(core::InvalidConnectionId)
     , _container(nullptr) {
+    _listen_port = 0;
+    _ext_info = 0;
     memcpy(&_address, addr, sizeof(raptor_resolved_address));
 }
 
@@ -23,10 +34,6 @@ void EndpointImpl::SetContainer(Container *container) {
 
 void EndpointImpl::SetListenPort(uint16_t port) {
     _listen_port = port;
-}
-
-std::shared_ptr<EndpointImpl> EndpointImpl::GetEndpoint() {
-    return this->shared_from_this();
 }
 
 uint64_t EndpointImpl::ConnectionId() const {
@@ -48,28 +55,43 @@ std::string EndpointImpl::PeerString() const {
     return peer;
 }
 
-bool EndpointImpl::SendMsg(const Slice &slice) const {
+void EndpointImpl::BindWithContainer(Container *container) {
+    container->AttachEndpoint(GetEndpointImpl());
+}
+
+bool EndpointImpl::SendMsg(const Slice &slice) {
     if (_container) {
-        // TODO(SHADOW)
+        return _container->SendMsg(GetEndpointImpl(), slice.begin(), slice.size());
     }
     return false;
 }
 
-bool EndpointImpl::SendMsg(void *data, size_t len) const {
+bool EndpointImpl::SendMsg(const void *data, size_t len) {
     if (_container) {
-        // TODO(SHADOW)
+        return _container->SendMsg(GetEndpointImpl(), data, len);
     }
     return false;
 }
 
-bool EndpointImpl::Close() const {
-    if (_container) {
-        // TODO(SHADOW)
-    }
-    return false;
+int EndpointImpl::SyncSend(const void *data, size_t len) {
+    return ::send(_socket_fd, data, len, 0);
 }
 
-const std::string &EndpointImpl::LocalIp() const {
+int EndpointImpl::SyncRecv(void *data, size_t len) {
+    return ::recv(_socket_fd, data, len, 0);
+}
+
+bool EndpointImpl::Close(bool notify) {
+    if (_container) {
+        _container->CloseEndpoint(GetEndpointImpl(), notify);
+    } else {
+        raptor_set_socket_shutdown(_socket_fd);
+        _socket_fd = uint64_t(-1);
+    }
+    return true;
+}
+
+std::string EndpointImpl::LocalIp() const {
     raptor_resolved_address local;
     int ret = raptor_get_local_sockaddr(_socket_fd, &local);
     if (ret != 0) {
@@ -91,7 +113,7 @@ uint16_t EndpointImpl::LocalPort() const {
     return raptor_sockaddr_get_port(&local);
 }
 
-const std::string &EndpointImpl::RemoteIp() const {
+std::string EndpointImpl::RemoteIp() const {
     char ip[128] = {0};
     int ret = raptor_sockaddr_get_ip(&_address, ip, sizeof(ip));
     return std::string(ip, ret);
@@ -101,4 +123,15 @@ uint16_t EndpointImpl::RemotePort() const {
     return raptor_sockaddr_get_port(&_address);
 }
 
+bool EndpointImpl::IsOnline() const {
+    return _socket_fd != uint64_t(-1) && _socket_fd > 0;
+}
+
+void EndpointImpl::SetExtInfo(uintptr_t info) {
+    _ext_info = info;
+}
+
+uintptr_t EndpointImpl::GetExtInfo() const {
+    return _ext_info;
+}
 }  // namespace raptor

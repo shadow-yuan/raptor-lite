@@ -24,11 +24,21 @@
 
 namespace raptor {
 
-typedef enum { kSocketError, kHeartbeatTimeout, kConnectFailed, kConnectionClosed } EventType;
+typedef enum {
+    kNoneError,
+    kSocketError,
+    kHeartbeatTimeout,
+    kConnectFailed,
+    kConnectionClosed
+} EventType;
 
 class Event final {
 public:
-    Event(EventType t, const std::string &desc = std::string(), int err = 0)
+    Event(EventType t)
+        : _type(t)
+        , _error_code(0) {}
+
+    Event(EventType t, const std::string &desc, int err)
         : _type(t)
         , _desc(desc)
         , _error_code(err) {}
@@ -45,6 +55,14 @@ public:
 
     int ErrorCode() const {
         return _error_code;
+    }
+
+    void SetErrorCode(int e) {
+        _error_code = e;
+    }
+
+    void SetErrorDesc(const std::string &desc) {
+        _desc = desc;
     }
 
 private:

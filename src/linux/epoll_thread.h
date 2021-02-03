@@ -21,19 +21,20 @@
 
 #include <stdint.h>
 #include "src/linux/epoll.h"
-#include "src/common/service.h"
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/thread.h"
+#include "src/common/service.h"
 
 namespace raptor {
-class SendRecvThread final {
+class EpollThread final {
 public:
-    explicit SendRecvThread(internal::IEpollReceiver *rcv);
-    ~SendRecvThread();
+    explicit EpollThread(internal::IEpollReceiver *rcv);
+    ~EpollThread();
 
-    RefCountedPtr<Status> Init();
-    bool Start();
+    raptor_error Init(int threads = 1);
+    raptor_error Start();
     void Shutdown();
+    void EnableTimeoutCheck(bool b);
 
     int Add(int fd, void *data, uint32_t events);
     int Modify(int fd, void *data, uint32_t events);
@@ -43,8 +44,11 @@ private:
     void DoWork(void *ptr);
     internal::IEpollReceiver *_receiver;
     bool _shutdown;
+    bool _timeout_check;
+    int _number_of_threads;
+    int _running_threads;
     Epoll _epoll;
-    Thread _thd;
+    Thread *_threads;
 };
 
 }  // namespace raptor

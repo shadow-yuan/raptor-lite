@@ -17,10 +17,11 @@
  */
 
 #include "src/linux/tcp_listener.h"
+#include <stdlib.h>
 #include <string.h>
 #include "src/common/sockaddr.h"
 #include "src/common/socket_util.h"
-#include "src/utils/log.h"
+#include "raptor-lite/utils/log.h"
 #include "src/utils/list_entry.h"
 #include "src/linux/socket_setting.h"
 #include "src/common/endpoint_impl.h"
@@ -81,7 +82,7 @@ RefCountedPtr<Status> TcpListener::Init(int threads) {
     return RAPTOR_ERROR_NONE;
 }
 
-RefCountedPtr<Status> TcpListener::StartListening() {
+RefCountedPtr<Status> TcpListener::Start() {
     if (_shutdown) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpAcceptor is not initialized");
     }
@@ -95,7 +96,10 @@ RefCountedPtr<Status> TcpListener::StartListening() {
 void TcpListener::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
-        _thd.Join();
+
+        for (int i = 0; i < _running_threads; i++) {
+            _threads[i].Join();
+        }
 
         _mtex.Lock();
         list_entry *entry = _head.next;
@@ -157,7 +161,7 @@ RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_addres
     char *strAddr = nullptr;
     raptor_sockaddr_to_string(&strAddr, addr, 0);
     log_debug("start listening on %s", strAddr ? strAddr : std::to_string(node->port).c_str());
-    Free(strAddr);
+    free(strAddr);
     return e;
 }
 
@@ -168,10 +172,10 @@ void TcpListener::ProcessEpollEvents(void *ptr, uint32_t events) {
         raptor_resolved_address client;
         int sock_fd = AcceptEx(sp->listen_fd, &client, 1, 1);
         if (sock_fd > 0) {
-            // TODO(SHADOW): sp->port not use
-            Endpoint ep(std::make_shared<EndpointImpl>(sock_fd, &client));
+            std::shared_ptr<EndpointImpl> ep = std::make_shared<EndpointImpl>(sock_fd, &client);
+            ep->SetListenPort(sp->port);
             Property property;
-            _handler->OnAccept(&ep, &property);
+            _handler->OnAccept(ep, property);
             ProcessProperty(sock_fd, property);
             break;
         }

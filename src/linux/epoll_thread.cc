@@ -18,48 +18,87 @@
 
 #include "src/linux/epoll_thread.h"
 #include "src/utils/time.h"
+#include "src/common/service.h"
 
 namespace raptor {
-SendRecvThread::SendRecvThread(internal::IEpollReceiver *rcv)
+EpollThread::EpollThread(internal::IEpollReceiver *rcv)
     : _receiver(rcv)
-    , _shutdown(true) {}
+    , _shutdown(true)
+    , _timeout_check(false)
+    , _number_of_threads(0)
+    , _running_threads(0) {}
 
-SendRecvThread::~SendRecvThread() {}
+EpollThread::~EpollThread() {
+    Shutdown();
+}
 
-RefCountedPtr<Status> SendRecvThread::Init() {
+RefCountedPtr<Status> EpollThread::Init(int threads) {
     if (!_shutdown) {
         return RAPTOR_ERROR_NONE;
     }
 
+    raptor_error err = _epoll.create();
+    if (err != RAPTOR_ERROR_NONE) {
+        return err;
+    }
+
     _shutdown = false;
-    auto e = _epoll.create();
-    if (e == RAPTOR_ERROR_NONE) {
-        _thd = Thread("send/recv", std::bind(&SendRecvThread::DoWork, this, std::placeholders::_1),
-                      nullptr);
+    _number_of_threads = threads;
+    _threads = new Thread[threads];
+
+    for (int i = 0; i < threads; i++) {
+        bool success = false;
+
+        _threads[i] = Thread(
+            "epoll:thread", std::bind(&EpollThread::DoWork, this, std::placeholders::_1), &success);
+
+        if (!success) {
+            break;
+        }
+
+        _running_threads++;
     }
-    return e;
+
+    if (_running_threads == 0) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("EpollThread failed to create thread");
+    }
+    return RAPTOR_ERROR_NONE;
 }
 
-bool SendRecvThread::Start() {
-    if (!_shutdown) {
-        _thd.Start();
-        return true;
+raptor_error EpollThread::Start() {
+    if (_shutdown) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("EpollThread is not initialized");
     }
-    return false;
+
+    for (int i = 0; i < _running_threads; i++) {
+        _threads[i].Start();
+    }
+    return RAPTOR_ERROR_NONE;
 }
 
-void SendRecvThread::Shutdown() {
+void EpollThread::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
-        _thd.Join();
+
+        for (int i = 0; i < _running_threads; i++) {
+            _threads[i].Join();
+        }
+        delete[] _threads;
+        _epoll.shutdown();
     }
 }
 
-void SendRecvThread::DoWork(void *ptr) {
+void EpollThread::EnableTimeoutCheck(bool b) {
+    _timeout_check = b;
+}
+
+void EpollThread::DoWork(void *ptr) {
     while (!_shutdown) {
 
-        time_t current_time = Now();
-        _receiver->OnCheckingEvent(current_time);
+        if (_timeout_check) {
+            int64_t current_time = GetCurrentMilliseconds();
+            _receiver->OnTimeoutCheck(current_time);
+        }
 
         int number_of_fd = _epoll.polling();
         if (_shutdown) {
@@ -86,15 +125,15 @@ void SendRecvThread::DoWork(void *ptr) {
     }
 }
 
-int SendRecvThread::Add(int fd, void *data, uint32_t events) {
+int EpollThread::Add(int fd, void *data, uint32_t events) {
     return _epoll.add(fd, data, events | EPOLLRDHUP);
 }
 
-int SendRecvThread::Modify(int fd, void *data, uint32_t events) {
+int EpollThread::Modify(int fd, void *data, uint32_t events) {
     return _epoll.modify(fd, data, events | EPOLLRDHUP);
 }
 
-int SendRecvThread::Delete(int fd, uint32_t events) {
+int EpollThread::Delete(int fd, uint32_t events) {
     return _epoll.remove(fd, events | EPOLLRDHUP);
 }
 

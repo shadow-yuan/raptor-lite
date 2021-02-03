@@ -38,7 +38,7 @@ public:
 
     RefCountedPtr<Status> Init(int threads = 1);
     RefCountedPtr<Status> AddListeningPort(const raptor_resolved_address *addr);
-    RefCountedPtr<Status> StartListening();
+    RefCountedPtr<Status> Start();
     void Shutdown();
 
 private:

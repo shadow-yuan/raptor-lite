@@ -19,6 +19,7 @@
 #ifndef __RAPTOR_UTILS_SLICE_BUFFER__
 #define __RAPTOR_UTILS_SLICE_BUFFER__
 
+#include <stddef.h>
 #include <stdint.h>
 #include <vector>
 

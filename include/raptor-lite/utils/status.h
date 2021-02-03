@@ -19,10 +19,21 @@
 #ifndef __RAPTOR_LITE_UTILS_STATUS__
 #define __RAPTOR_LITE_UTILS_STATUS__
 
+#include <stdlib.h>
 #include <string>
 
 #include "raptor-lite/utils/ref_counted.h"
 #include "raptor-lite/utils/slice.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int raptor_asprintf(char **strp, const char *format, ...);
+
+#ifdef __cplusplus
+}
+#endif
 
 namespace raptor {
 class Status final : public RefCounted<Status, NonPolymorphicRefCount> {
@@ -73,7 +84,7 @@ inline RefCountedPtr<Status> MakeStatusFromFormat(Args &&... args) {
         return nullptr;
     }
     RefCountedPtr<Status> obj = MakeRefCounted<Status>(message);
-    raptor::Free(message);
+    free(message);
     return obj;
 }
 

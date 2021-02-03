@@ -17,6 +17,7 @@
  */
 
 #include "src/linux/tcp_connector.h"
+#include <string.h>
 #include "raptor-lite/impl/connector.h"
 #include "raptor-lite/impl/endpoint.h"
 #include "src/common/endpoint_impl.h"
@@ -165,22 +166,20 @@ void TcpConnector::WorkThread(void *) {
             struct async_connect_record_entry *entry =
                 reinterpret_cast<struct async_connect_record_entry *>(ev->data.ptr);
 
-            std::shared_ptr<EndpointImpl> obj =
+            std::shared_ptr<EndpointImpl> endpoint =
                 std::make_shared<EndpointImpl>(entry->fd, &entry->addr);
-
-            Endpoint endpoint(obj);
 
             _epoll.remove(entry->fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP | EPOLLONESHOT);
 
             if (ev->events & EPOLLERR || ev->events & EPOLLHUP || ev->events & EPOLLRDHUP ||
                 ev->events & EPOLLIN) {
-                int error_code = raptor_get_socket_error(fd);
+                int error_code = raptor_get_socket_error(entry->fd);
                 raptor_error err = MakeRefCounted<Status>(error_code, "getsockopt(SO_ERROR)");
                 _handler->OnErrorOccurred(endpoint, err);
                 raptor_set_socket_shutdown(entry->fd);
             } else if (ev->events & EPOLLOUT) {
                 Property property;
-                _handler->OnConnect(endpoint, &property);
+                _handler->OnConnect(endpoint, property);
                 ProcessProperty(entry->fd, property);
             }
 

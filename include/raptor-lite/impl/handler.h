@@ -31,13 +31,13 @@ public:
     virtual ~ProtocolHandler() {}
 
     // return -1: error;  0: need more data; > 0 : pack_len
-    virtual int OnCheckPackageLength(const void *data, size_t len) = 0;
+    virtual int OnCheckPackageLength(const Endpoint &ep, const void *data, size_t len) = 0;
 };
 
 class MessageHandler {
 public:
     virtual ~MessageHandler() {}
-    virtual int OnMessage(Endpoint *ep, Slice *msg) = 0;
+    virtual int OnMessage(const Endpoint &ep, const Slice &msg) = 0;
 };
 
 class HeartbeatHandler {
@@ -54,7 +54,7 @@ public:
 class EventHandler {
 public:
     virtual ~EventHandler() {}
-    virtual void OnEvent(Endpoint *ep, Event *event) = 0;
+    virtual void OnEvent(const Endpoint &ep, const Event &event) = 0;
 };
 
 }  // namespace raptor

@@ -16,109 +16,84 @@
  *
  */
 
-#include "core/linux/connection.h"
+#include "src/linux/connection.h"
+
 #include <errno.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include "core/linux/epoll_thread.h"
-#include "core/linux/socket_setting.h"
-#include "core/socket_util.h"
-#include "raptor/protocol.h"
-#include "util/alloc.h"
-#include "util/log.h"
-#include "util/sync.h"
-#include "util/time.h"
+
+#include "raptor-lite/impl/handler.h"
+#include "raptor-lite/impl/endpoint.h"
+#include "raptor-lite/utils/log.h"
+#include "raptor-lite/utils/sync.h"
+
+#include "src/linux/epoll_thread.h"
+#include "src/linux/socket_setting.h"
+#include "src/common/endpoint_impl.h"
+#include "src/common/service.h"
+#include "src/common/socket_util.h"
+#include "src/utils/time.h"
 
 namespace raptor {
-Connection::Connection(internal::INotificationTransfer* service)
+Connection::Connection(internal::INotificationTransfer *service)
     : _service(service)
     , _proto(nullptr)
-    , _fd(-1)
-    , _cid(core::InvalidConnectionId)
-    , _rcv_thd(nullptr)
-    , _snd_thd(nullptr) {
+    , _epoll_thread(nullptr) {
 
-    _user_data = 0;
-    _extend_ptr = nullptr;
+    _ext_data = 0;
 }
 
 Connection::~Connection() {}
 
-void Connection::Init(
-                    ConnectionId cid,
-                    int fd,
-                    const raptor_resolved_address* addr,
-                    SendRecvThread* r, SendRecvThread* s) {
-    _cid = cid;
+void Connection::Init(uint64_t cid, std::shared_ptr<EndpointImpl> obj, EpollThread *t) {
+    obj->SetConnection(cid);
+    _endpoint.swap(obj);
+    _epoll_thread = t;
 
-    _fd = fd;
-
-    _rcv_thd = r;
-    _snd_thd = s;
-
-    _rcv_thd->Add(fd, (void*)_cid, EPOLLIN | EPOLLET);
-    _snd_thd->Add(fd, (void*)_cid, EPOLLOUT | EPOLLET);
-
-    _addr = *addr;
-
-    char* output = nullptr;
-    int bytes = raptor_sockaddr_to_string(&output, &_addr, 1);
-    if (output && bytes > 0) {
-        _addr_str = Slice(output, static_cast<size_t>(bytes+1));
-    }
-    if (output) {
-        Free(output);
-    }
-    _service->OnConnectionArrived(_cid, &_addr_str);
+    _epoll_thread->Add(cid, (void *)cid, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
 }
 
-void Connection::SetProtocol(IProtocol* p) {
+void Connection::SetProtocol(ProtocolHandler *p) {
     _proto = p;
 }
 
-bool Connection::SendWithHeader(const void* hdr, size_t hdr_len, const void* data, size_t data_len) {
-    if (!IsOnline()) return false;
+bool Connection::SendMsg(const void *data, size_t data_len) {
+    if (!_endpoint->IsOnline()) return false;
     AutoMutex g(&_snd_mutex);
-    if (hdr != nullptr && hdr_len > 0) {
-        _snd_buffer.AddSlice(Slice(hdr, hdr_len));
-    }
-    if (data != nullptr && data_len > 0) {
-        _snd_buffer.AddSlice(Slice(data, data_len));
-    }
-    _snd_thd->Modify(_fd, (void*)_cid, EPOLLOUT | EPOLLET);
+    _snd_buffer.AddSlice(Slice(data, data_len));
+    _epoll_thread->Modify(_endpoint->_socket_fd, (void *)_endpoint->_connection_id,
+                          EPOLLOUT | EPOLLET);
     return true;
 }
 
 void Connection::Shutdown(bool notify) {
-    if (_fd < 0) {
+    if (!_endpoint->IsOnline()) {
         return;
     }
 
-    _rcv_thd->Delete(_fd, EPOLLIN | EPOLLET);
-    _snd_thd->Delete(_fd, EPOLLOUT | EPOLLET);
+    _epoll_thread->Delete(_endpoint->_socket_fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
 
     if (notify) {
-        _service->OnConnectionClosed(_cid);
+        _service->OnClosed(_endpoint);
     }
 
-    raptor_set_socket_shutdown(_fd);
-    _fd = -1;
+    raptor_set_socket_shutdown(_endpoint->_socket_fd);
+    _endpoint->_socket_fd = 0;
 
-    memset(&_addr, 0, sizeof(_addr));
+    memset(&_endpoint->_address, 0, sizeof(_endpoint->_address));
 
     ReleaseBuffer();
 
-    _user_data = 0;
-    _extend_ptr = nullptr;
+    _ext_data = 0;
 }
 
 bool Connection::IsOnline() {
-    return (_fd > 0);
+    return _endpoint->IsOnline();
 }
 
-const raptor_resolved_address* Connection::GetAddress() {
-    return &_addr;
+uint64_t Connection::Id() const {
+    return _endpoint->_connection_id;
 }
 
 void Connection::ReleaseBuffer() {
@@ -135,7 +110,8 @@ void Connection::ReleaseBuffer() {
 bool Connection::DoRecvEvent() {
     int result = OnRecv();
     if (result == 0) {
-        _rcv_thd->Modify(_fd, (void*)_cid, EPOLLIN | EPOLLET);
+        _epoll_thread->Modify(_endpoint->_socket_fd, (void *)_endpoint->_connection_id,
+                              EPOLLIN | EPOLLET | EPOLLONESHOT);
         return true;
     }
     return false;
@@ -158,7 +134,7 @@ int Connection::OnRecv() {
         char buffer[8192];
 
         unused_space = sizeof(buffer);
-        recv_bytes = ::recv(_fd, buffer, unused_space, 0);
+        recv_bytes = ::recv(_endpoint->_socket_fd, buffer, unused_space, 0);
 
         if (recv_bytes == 0) {
             return -1;
@@ -171,10 +147,14 @@ int Connection::OnRecv() {
             return -1;
         }
 
-        // Add to recv buffer
-        _rcv_buffer.AddSlice(Slice(buffer, recv_bytes));
-        if (ParsingProtocol() == -1) {
-            return -1;
+        if (!_proto) {
+            _service->OnDataReceived(_endpoint, Slice(buffer, recv_bytes));
+        } else {
+            // Add to recv buffer
+            _rcv_buffer.AddSlice(Slice(buffer, recv_bytes));
+            if (ParsingProtocol() == -1) {
+                return -1;
+            }
         }
 
     } while (recv_bytes == unused_space);
@@ -190,8 +170,8 @@ int Connection::OnSend() {
     size_t count = 0;
     do {
 
-        Slice slice = _snd_buffer.GetTopSlice();
-        int slen = ::send(_fd, slice.begin(), slice.size(), 0);
+        Slice slice = _snd_buffer.Front();
+        int slen = ::send(_endpoint->_socket_fd, slice.begin(), slice.size(), 0);
 
         if (slen == 0) {
             return -1;
@@ -205,13 +185,13 @@ int Connection::OnSend() {
         }
 
         _snd_buffer.MoveHeader((size_t)slen);
-        count = _snd_buffer.Count();
+        count = _snd_buffer.SliceCount();
 
     } while (count > 0);
     return 0;
 }
 
-bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice& s) {
+bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice &s) {
     size_t cache_size = _rcv_buffer.GetBufferLength();
     if (read_size >= cache_size) {
         s = _rcv_buffer.Merge();
@@ -223,7 +203,7 @@ bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice& s) {
 
 int Connection::ParsingProtocol() {
     size_t cache_size = _rcv_buffer.GetBufferLength();
-    size_t header_size = _proto->GetMaxHeaderSize();
+    constexpr size_t header_size = 1024;
     int package_counter = 0;
 
     while (cache_size > 0) {
@@ -232,9 +212,9 @@ int Connection::ParsingProtocol() {
         Slice package;
         do {
             bool reach_tail = ReadSliceFromRecvBuffer(read_size, package);
-            pack_len = _proto->CheckPackageLength(package.begin(), package.size());
+            pack_len = _proto->OnCheckPackageLength(_endpoint, package.begin(), package.size());
             if (pack_len < 0) {
-                log_error("tcp client: internal protocol error(pack_len = %d)", pack_len);
+                log_error("Connection: internal protocol error");
                 return -1;
             }
 
@@ -258,9 +238,9 @@ int Connection::ParsingProtocol() {
             package = _rcv_buffer.GetHeader(pack_len);
         } else {
             size_t n = package.size() - pack_len;
-            package.CutTail(n);
+            package.PopBack(n);
         }
-        _service->OnDataReceived(_cid, &package);
+        _service->OnDataReceived(_endpoint, package);
         _rcv_buffer.MoveHeader(pack_len);
 
         cache_size = _rcv_buffer.GetBufferLength();
@@ -270,37 +250,12 @@ done:
     return package_counter;
 }
 
-void Connection::SetUserData(void* ptr) {
-    _extend_ptr = ptr;
+void Connection::SetExtendInfo(uintptr_t data) {
+    _endpoint->SetExtInfo(data);
 }
 
-void Connection::GetUserData(void** ptr) const {
-    if (ptr) {
-        *ptr = _extend_ptr;
-    }
+uintptr_t Connection::GetExtendInfo() const {
+    return _endpoint->GetExtInfo();
 }
 
-void Connection::SetExtendInfo(uint64_t data) {
-    _user_data = data;
-}
-
-void Connection::GetExtendInfo(uint64_t& data) const {
-    data = _user_data;
-}
-
-int Connection::GetPeerString(char* buf, int len) {
-    if (!IsOnline()) {
-        return -1;
-    }
-
-    int bytes = static_cast<int>(_addr_str.size());
-    if (len > 0 && bytes > 0) {
-        if (bytes > len) {
-            bytes = len;
-        }
-        memcpy(buf, _addr_str.begin(), bytes);
-        return bytes;
-    }
-    return 0;
-}
-} // namespace raptor
+}  // namespace raptor

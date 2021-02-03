@@ -36,11 +36,11 @@ public:
     raptor_error Init(int threads = 1, int tcp_user_timeout_ms = 0);
     raptor_error Start();
     void Shutdown();
-    raptor_error Connect(const std::string &addr, int timeout_millseconds);
+    raptor_error Connect(const std::string &addr);
 
 private:
     void WorkThread(void *);
-    raptor_error AsyncConnect(const raptor_resolved_address *addr);
+    raptor_error AsyncConnect(const raptor_resolved_address *addr, int timeout_ms);
     void ProcessProperty(int fd, const Property &p);
 
 private:

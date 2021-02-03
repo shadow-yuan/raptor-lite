@@ -19,30 +19,15 @@
 #ifndef __RAPTOR_CORE_SERVICE__
 #define __RAPTOR_CORE_SERVICE__
 
-#include <time.h>
-
-#include "src/common/cid.h"
-#include "src/common/sockaddr.h"
-#include "src/common/resolve_address.h"
+#include <stddef.h>
+#include <stdint.h>
 
 namespace raptor {
 
 class Slice;
+class Endpoint;
 
 namespace internal {
-
-// accept
-class IAcceptor {
-public:
-    virtual ~IAcceptor() {}
-    virtual void OnNewConnection(
-#ifdef _WIN32
-        SOCKET fd,
-#else
-        int fd,
-#endif
-        int listen_port, const raptor_resolved_address *addr) = 0;
-};
 
 // for epoll
 class IEpollReceiver {
@@ -51,7 +36,7 @@ public:
     virtual void OnErrorEvent(void *ptr) = 0;
     virtual void OnRecvEvent(void *ptr) = 0;
     virtual void OnSendEvent(void *ptr) = 0;
-    virtual void OnCheckingEvent(time_t current) = 0;
+    virtual void OnTimeoutCheck(int64_t current_millseconds) = 0;
 };
 
 // for iocp
@@ -61,14 +46,14 @@ public:
     virtual void OnErrorEvent(void *ptr, size_t err_code) = 0;
     virtual void OnRecvEvent(void *ptr, size_t transferred_bytes) = 0;
     virtual void OnSendEvent(void *ptr, size_t transferred_bytes) = 0;
-    virtual void OnCheckingEvent(time_t current) = 0;
+    virtual void OnTimeoutCheck(int64_t current_millseconds) = 0;
 };
 
 class INotificationTransfer {
 public:
     virtual ~INotificationTransfer() {}
-    virtual void OnDataReceived(ConnectionId cid, const Slice *s) = 0;
-    virtual void OnConnectionClosed(ConnectionId cid) = 0;
+    virtual void OnDataReceived(const Endpoint &ep, const Slice &s) = 0;
+    virtual void OnClosed(const Endpoint &ep) = 0;
 };
 
 }  // namespace internal

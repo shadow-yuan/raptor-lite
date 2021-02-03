@@ -11,13 +11,13 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(RAPTOR_VERSION_MAJOR "1")
+set(RAPTOR_VERSION_MAJOR "2")
 set(RAPTOR_VERSION_MINOR "0")
 set(RAPTOR_VERSION_PATCH "0")
 set(RAPTOR_VERSION
     "${RAPTOR_VERSION_MAJOR}.${RAPTOR_VERSION_MINOR}.${RAPTOR_VERSION_PATCH}")
 
-message(STATUS "Raptor Version     : ${RAPTOR_VERSION}")
+message(STATUS "Raptor-lite Version     : ${RAPTOR_VERSION}")
 
 if(WIN32 AND MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "/MT")
@@ -28,7 +28,7 @@ else()
 endif()
 
 # Build option
-option(RAPTOR_BUILD_ALLTESTS     "Build raptor's all unit tests" OFF)
+option(RAPTOR_BUILD_ALLTESTS     "Build raptor-lite's all unit tests" ON)
 
 if(WIN32 AND MSVC)
     add_definitions(/W4)
@@ -46,95 +46,104 @@ include_directories(
 )
 
 # static library
-add_library(raptor STATIC "")
+add_library(raptor-lite STATIC "")
 
 if (WIN32)
     set(
         RAPTOR_ENGINE_SOURCE
         #IOCP
-        "${PROJECT_SOURCE_DIR}/core/windows/connection.cc"
-        "${PROJECT_SOURCE_DIR}/core/windows/iocp_thread.cc"
-        "${PROJECT_SOURCE_DIR}/core/windows/iocp.cc"
-        "${PROJECT_SOURCE_DIR}/core/windows/socket_setting.cc"
-        "${PROJECT_SOURCE_DIR}/core/windows/tcp_client.cc"
-        "${PROJECT_SOURCE_DIR}/core/windows/tcp_listener.cc"
-        "${PROJECT_SOURCE_DIR}/core/windows/tcp_server.cc"
+        "${PROJECT_SOURCE_DIR}/src/windows/connection.cc"
+        "${PROJECT_SOURCE_DIR}/src/windows/iocp_thread.cc"
+        "${PROJECT_SOURCE_DIR}/src/windows/iocp.cc"
+        "${PROJECT_SOURCE_DIR}/src/windows/socket_setting.cc"
+        "${PROJECT_SOURCE_DIR}/src/windows/tcp_connector.cc"
+        "${PROJECT_SOURCE_DIR}/src/windows/tcp_container.cc"
+        "${PROJECT_SOURCE_DIR}/src/windows/tcp_listener.cc"
+        #"${PROJECT_SOURCE_DIR}/src/windows/tcp_server.cc"
     )
 else()
     set(
         RAPTOR_ENGINE_SOURCE
         #EPOLL
-        "${PROJECT_SOURCE_DIR}/core/linux/connection.cc"
-        "${PROJECT_SOURCE_DIR}/core/linux/epoll_thread.cc"
-        "${PROJECT_SOURCE_DIR}/core/linux/epoll.cc"
-        "${PROJECT_SOURCE_DIR}/core/linux/socket_setting.cc"
-        "${PROJECT_SOURCE_DIR}/core/linux/tcp_client.cc"
-        "${PROJECT_SOURCE_DIR}/core/linux/tcp_listener.cc"
-        "${PROJECT_SOURCE_DIR}/core/linux/tcp_server.cc"
+        "${PROJECT_SOURCE_DIR}/src/linux/connection.cc"
+        "${PROJECT_SOURCE_DIR}/src/linux/epoll_thread.cc"
+        "${PROJECT_SOURCE_DIR}/src/linux/epoll.cc"
+        "${PROJECT_SOURCE_DIR}/src/linux/socket_setting.cc"
+        "${PROJECT_SOURCE_DIR}/src/linux/tcp_connector.cc"
+        "${PROJECT_SOURCE_DIR}/src/linux/tcp_container.cc"
+        "${PROJECT_SOURCE_DIR}/src/linux/tcp_listener.cc"
+        #"${PROJECT_SOURCE_DIR}/src/linux/tcp_server.cc"
     )
 endif()
 
 set(
-    RAPTOR_CORE_SOURCE
-    "${PROJECT_SOURCE_DIR}/core/slice/slice_buffer.cc"
-    "${PROJECT_SOURCE_DIR}/core/slice/slice.cc"
-    "${PROJECT_SOURCE_DIR}/core/host_port.cc"
-    "${PROJECT_SOURCE_DIR}/core/mpscq.cc"
-    "${PROJECT_SOURCE_DIR}/core/resolve_address.cc"
-    "${PROJECT_SOURCE_DIR}/core/socket_util.cc"
+    RAPTOR_COMMON_SOURCE
+    "${PROJECT_SOURCE_DIR}/src/common/endpoint_impl.cc"
+    "${PROJECT_SOURCE_DIR}/src/common/host_port.cc"
+    "${PROJECT_SOURCE_DIR}/src/common/resolve_address.cc"
+    "${PROJECT_SOURCE_DIR}/src/common/socket_util.cc"
 )
+
 set(
-    RAPTOR_UTIL_SOURCE
-    "${PROJECT_SOURCE_DIR}/util/alloc.cc"
-    "${PROJECT_SOURCE_DIR}/util/cpu.cc"
-    "${PROJECT_SOURCE_DIR}/util/list_entry.cc"
-    "${PROJECT_SOURCE_DIR}/util/log.cc"
-    "${PROJECT_SOURCE_DIR}/util/status.cc"
-    "${PROJECT_SOURCE_DIR}/util/string.cc"
-    "${PROJECT_SOURCE_DIR}/util/sync.cc"
-    "${PROJECT_SOURCE_DIR}/util/thread.cc"
-    "${PROJECT_SOURCE_DIR}/util/time.cc"
+    RAPTOR_UTILS_SOURCE
+    "${PROJECT_SOURCE_DIR}/src/utils/cpu.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/list_entry.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/log.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/mpscq.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/slice_buffer.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/slice.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/status.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/string.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/sync.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/thread.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/time.cc"
 )
 
 set(
     RAPTOR_SURFACE_SOURCE
-    "${PROJECT_SOURCE_DIR}/surface/adapter.cc"
-    "${PROJECT_SOURCE_DIR}/surface/client.cc"
-    "${PROJECT_SOURCE_DIR}/surface/server.cc"
+    "${PROJECT_SOURCE_DIR}/src/surface/acceptor.cc"
+    "${PROJECT_SOURCE_DIR}/src/surface/connector.cc"
+    "${PROJECT_SOURCE_DIR}/src/surface/container.cc"
+    "${PROJECT_SOURCE_DIR}/src/surface/endpoint.cc"
 )
 
-target_sources(raptor-static
+target_sources(raptor-lite
     PRIVATE
     ${RAPTOR_ENGINE_SOURCE}
-    ${RAPTOR_CORE_SOURCE}
-    ${RAPTOR_UTIL_SOURCE}
+    ${RAPTOR_COMMON_SOURCE}
+    ${RAPTOR_UTILS_SOURCE}
     ${RAPTOR_SURFACE_SOURCE}
 )
 
-target_link_libraries(raptor
+target_link_libraries(raptor-lite
     ${RAPTOR_BASELIB_LIBRARIES}
 )
 
 if(RAPTOR_BUILD_ALLTESTS)
     enable_testing()
 
-    function(raptor_test test_file)
+    function(raptor_test_func test_file)
     get_filename_component(test_target_name "${test_file}" NAME_WE)
 
     add_executable("${test_target_name}" "")
     target_sources("${test_target_name}"
         PRIVATE
-        "${PROJECT_SOURCE_DIR}/util/test_util.cc"
-        "${PROJECT_SOURCE_DIR}/util/test_util.h"
+        "${PROJECT_SOURCE_DIR}/src/utils/testutil.cc"
+        "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/testutil.h"
 
         "${test_file}"
     )
-    target_link_libraries("${test_target_name}" raptor)
+    target_link_libraries("${test_target_name}" raptor-lite)
+    target_include_directories("${test_target_name}"
+        PRIVATE
+        "${PROJECT_SOURCE_DIR}"
+        "${PROJECT_SOURCE_DIR}/include"
+    )
     add_test(NAME "${test_target_name}" COMMAND "${test_target_name}")
-    endfunction(raptor_test)
+    endfunction(raptor_test_func)
 
     # Add unit test source files below
-    #raptor_test("${PROJECT_SOURCE_DIR}/tests/slice_test.cc")
+    raptor_test_func("${PROJECT_SOURCE_DIR}/example/tcp_client_test.cc")
+    raptor_test_func("${PROJECT_SOURCE_DIR}/example/tcp_server_test.cc")
 
 endif(RAPTOR_BUILD_ALLTESTS)
-

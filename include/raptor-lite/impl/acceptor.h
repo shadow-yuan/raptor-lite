@@ -40,7 +40,7 @@ public:
      *   4. SocketSendTimeout   (int)
      *   5. SocketLowLatency    (bool, default: true)
      */
-    virtual void OnAccept(Endpoint *ep, Property *settings);
+    virtual void OnAccept(const Endpoint &ep, Property &settings) = 0;
 };
 
 class Acceptor {

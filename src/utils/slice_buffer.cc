@@ -18,10 +18,16 @@
 
 #include "raptor-lite/utils/slice_buffer.h"
 #include <string.h>
+#include <iterator>
 #include "raptor-lite/utils/log.h"
 #include "raptor-lite/utils/useful.h"
 
 namespace raptor {
+
+SliceBuffer::SliceBuffer()
+    : _length(0) {}
+
+SliceBuffer::~SliceBuffer() {}
 
 Slice SliceBuffer::Merge() const {
 

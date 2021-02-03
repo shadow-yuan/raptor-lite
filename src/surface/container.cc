@@ -31,82 +31,94 @@ namespace raptor {
 class ContainerAdaptor : public Container {
 
 public:
-    explicit ContainerAdaptor(MessageHandler *handler);
+    explicit ContainerAdaptor(TcpContainer::Option *option);
     ~ContainerAdaptor();
 
-    raptor_error Init(int rs_threads = 1);
-    void SetProtocolHandler(ProtocolHandler *p);
-    void SetHeartbeatHandler(HeartbeatHandler *h);
-    void SetEventHandler(EventHandler *e);
-
-    bool Start() override;
+    raptor_error Init();
+    raptor_error Start() override;
     void Shutdown() override;
-    void AttachEndpoint(Endpoint *) override;
-    bool SendMsg(Endpoint *ep, const void *data, size_t len) override;
+    raptor_error AttachEndpoint(const Endpoint &ep) override;
+    bool SendMsg(const Endpoint &ep, const void *data, size_t len) override;
+    void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
 private:
     std::shared_ptr<TcpContainer> _impl;
 };
 
-ContainerAdaptor::ContainerAdaptor(MessageHandler *handler)
-    : _impl(std::make_shared<TcpContainer>(handler)) {}
+ContainerAdaptor::ContainerAdaptor(TcpContainer::Option *option)
+    : _impl(std::make_shared<TcpContainer>(option)) {}
 
 ContainerAdaptor::~ContainerAdaptor() {}
 
-raptor_error ContainerAdaptor::Init(int rs_threads) {
-    return _impl->Init(rs_threads);
+raptor_error ContainerAdaptor::Init() {
+    return _impl->Init();
 }
 
-bool ContainerAdaptor::Start() {
+raptor_error ContainerAdaptor::Start() {
     return _impl->Start();
 }
 void ContainerAdaptor::Shutdown() {
     _impl->Shutdown();
 }
-void ContainerAdaptor::AttachEndpoint(Endpoint *ep) {
-    _impl->AttachEndpoint(ep);
+
+raptor_error ContainerAdaptor::AttachEndpoint(const Endpoint &ep) {
+    return _impl->AttachEndpoint(ep);
 }
 
-bool ContainerAdaptor::SendMsg(Endpoint *ep, const void *data, size_t len) {
+bool ContainerAdaptor::SendMsg(const Endpoint &ep, const void *data, size_t len) {
     return _impl->SendMsg(ep, data, len);
+}
+
+void ContainerAdaptor::CloseEndpoint(const Endpoint &ep, bool event_notify) {
+    _impl->CloseEndpoint(ep, event_notify);
 }
 
 /*
  * Property:
- *   1. ProtocolHandler (optional)
- *   2. MessageHandler  (required)
- *   3. HeartbeatHandler(optional)
- *   4. EventHandler    (optional)
- *   5. RecvSendThreads (optional, default: 1)
+ *   1. ProtocolHandler            (optional)
+ *   2. MessageHandler             (required)
+ *   3. HeartbeatHandler           (optional)
+ *   4. EventHandler               (optional)
+ *   5. RecvSendThreads            (optional, default: 1)
+ *   6. DefaultContainerSize       (optional, default: 256)
+ *   7. MaxContainerSize           (optional, default: 1048576)
+ *   8. NotCheckConnectionTimeout  (optional, default: false)
+ *   9. ConnectionTimeoutMs        (optional, default: 60000)
+ *  10. MQConsumerThreads          (optional, default: 1)
  */
 raptor_error CreateContainer(const Property &p, Container **out) {
-    MessageHandler *message =
+    MessageHandler *message_handler =
         reinterpret_cast<MessageHandler *>(p.GetValue<intptr_t>("MessageHandler", 0));
 
-    if (!message) {
+    if (!message_handler) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("Missing MessageHandler");
     }
 
     *out = nullptr;
 
-    ProtocolHandler *proto =
+    TcpContainer::Option option;
+    option.proto_handler =
         reinterpret_cast<ProtocolHandler *>(p.GetValue<intptr_t>("ProtocolHandler", 0));
 
-    HeartbeatHandler *heartbeat =
+    option.heartbeat_handler =
         reinterpret_cast<HeartbeatHandler *>(p.GetValue<intptr_t>("HeartbeatHandler", 0));
-    EventHandler *event = reinterpret_cast<EventHandler *>(p.GetValue<intptr_t>("EventHandler", 0));
 
-    int RecvSendThreads = p.GetValue("RecvSendThreads", 1);
+    option.event_handler =
+        reinterpret_cast<EventHandler *>(p.GetValue<intptr_t>("EventHandler", 0));
 
-    ContainerAdaptor *adaptor = new ContainerAdaptor(message);
-    raptor_error e = adaptor->Init(RecvSendThreads);
-    if (e == RAPTOR_ERROR_NONE) {
+    option.recv_send_threads = p.GetValue("RecvSendThreads", 1);
+    option.default_container_size = p.GetValue("DefaultContainerSize", 256);
+    option.max_container_size = p.GetValue("MaxContainerSize", 1048576);
+    option.not_check_connection_timeout = p.GetValue<bool>("NotCheckConnectionTimeout", true);
+    option.connection_timeoutms = p.GetValue("ConnectionTimeoutMs", 60000);
+    option.mq_consumer_threads = p.GetValue("MQConsumerThreads", 1);
+
+    ContainerAdaptor *adaptor = new ContainerAdaptor(&option);
+    raptor_error err = adaptor->Init();
+    if (err == RAPTOR_ERROR_NONE) {
         *out = adaptor;
-        adaptor->SetProtocolHandler(proto);
-        adaptor->SetHeartbeatHandler(heartbeat);
-        adaptor->SetEventHandler(event);
     }
-    return e;
+    return err;
 }
 
 void DestoryContainer(Container *cc) {
