@@ -19,14 +19,15 @@
 #include "src/windows/tcp_listener.h"
 #include <string.h>
 #include <memory>
-#include "src/windows/socket_setting.h"
-#include "src/utils/list_entry.h"
-#include "raptor-lite/utils/log.h"
-#include "src/common/endpoint_impl.h"
-#include "src/common/socket_util.h"
+#include "raptor-lite/impl/acceptor.h"
 #include "raptor-lite/impl/endpoint.h"
 #include "raptor-lite/impl/property.h"
-#include "raptor-lite/impl/acceptor.h"
+#include "raptor-lite/utils/list_entry.h"
+#include "raptor-lite/utils/log.h"
+
+#include "src/common/endpoint_impl.h"
+#include "src/common/socket_util.h"
+#include "src/windows/socket_setting.h"
 
 namespace raptor {
 
@@ -93,7 +94,7 @@ raptor_error TcpListener::Init(int threads) {
 
         _threads[i] =
             Thread("Win32:listen", std::bind(&TcpListener::WorkThread, this, std::placeholders::_1),
-                   &success);
+                   nullptr, &success);
 
         if (!success) {
             break;
@@ -250,16 +251,16 @@ void TcpListener::WorkThread(void *) {
         memset(&client, 0, sizeof(client));
         ParsingNewConnectionAddress(CompletionKey, &client);
 
-        // TODO(SHAODW): CompletionKey->port not use
-        Endpoint ep(std::make_shared<EndpointImpl>(CompletionKey->new_socket, &client));
+        auto ep = std::make_shared<EndpointImpl>(CompletionKey->new_socket, &client);
+        ep->SetListenPort(static_cast<uint16_t>(CompletionKey->port));
         Property property;
-        _service->OnAccept(&ep, &property);
+        _service->OnAccept(ep, property);
         ProcessProperty(CompletionKey->new_socket, property);
 
         CompletionKey->new_socket = INVALID_SOCKET;
         raptor_error e = StartAcceptEx(CompletionKey);
         if (e != RAPTOR_ERROR_NONE) {
-            log_error("prepare next accept fd error: %s", e->ToString().c_str());
+            log_error("TcpListener: AcceptEx next fd error: %s", e->ToString().c_str());
             break;
         }
     }

@@ -27,4 +27,7 @@
 #include <raptor-lite/impl/property.h>
 #include <raptor-lite/impl/server.h>
 
+int RaptorGlobalStartup();
+int RaptorGlobalCleanup();
+
 #endif  // __RAPTOR_LITE_H__

@@ -7,11 +7,8 @@
 #include "raptor-lite/impl/property.h"
 #include "raptor-lite/impl/endpoint.h"
 
-#include "raptor-lite/utils/testutil.h"
 #include "raptor-lite/utils/slice.h"
 #include "raptor-lite/utils/slice_buffer.h"
-
-class ConnectorTestUtil {};
 
 class TcpServerTest : public raptor::AcceptorHandler, public raptor::MessageHandler {
 public:

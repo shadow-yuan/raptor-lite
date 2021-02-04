@@ -22,7 +22,6 @@
 #include "src/common/sockaddr.h"
 #include "src/common/socket_util.h"
 #include "raptor-lite/utils/log.h"
-#include "src/utils/list_entry.h"
 #include "src/linux/socket_setting.h"
 #include "src/common/endpoint_impl.h"
 #include "raptor-lite/impl/endpoint.h"
@@ -68,7 +67,7 @@ RefCountedPtr<Status> TcpListener::Init(int threads) {
 
         _threads[i] =
             Thread("Linux:listen", std::bind(&TcpListener::DoPolling, this, std::placeholders::_1),
-                   &success);
+                   nullptr, &success);
 
         if (!success) {
             break;
@@ -172,11 +171,13 @@ void TcpListener::ProcessEpollEvents(void *ptr, uint32_t events) {
         raptor_resolved_address client;
         int sock_fd = AcceptEx(sp->listen_fd, &client, 1, 1);
         if (sock_fd > 0) {
-            std::shared_ptr<EndpointImpl> ep = std::make_shared<EndpointImpl>(sock_fd, &client);
-            ep->SetListenPort(sp->port);
+            std::shared_ptr<EndpointImpl> obj = std::make_shared<EndpointImpl>(sock_fd, &client);
+            obj->SetListenPort(sp->port);
             Property property;
-            _handler->OnAccept(ep, property);
-            ProcessProperty(sock_fd, property);
+            _handler->OnAccept(obj, property);
+            if (obj->IsOnline()) {
+                ProcessProperty(sock_fd, property);
+            }
             break;
         }
         if (errno == EINTR) {
@@ -196,7 +197,7 @@ int TcpListener::AcceptEx(int sockfd, raptor_resolved_address *resolved_addr, in
     flags |= cloexec ? SOCK_CLOEXEC : 0;
     resolved_addr->len = sizeof(resolved_addr->addr);
     return accept4(sockfd, reinterpret_cast<raptor_sockaddr *>(resolved_addr->addr),
-                   &resolved_addr->len, flags);
+                   reinterpret_cast<socklen_t *>(&resolved_addr->len), flags);
 }
 
 void TcpListener::ProcessProperty(int fd, const Property &p) {

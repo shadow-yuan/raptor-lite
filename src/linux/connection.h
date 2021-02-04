@@ -21,6 +21,9 @@
 
 #include <stdint.h>
 #include <memory>
+
+#include "raptor-lite/impl/event.h"
+#include "raptor-lite/utils/atomic.h"
 #include "raptor-lite/utils/slice_buffer.h"
 #include "raptor-lite/utils/sync.h"
 
@@ -38,16 +41,14 @@ class Connection final {
     friend class TcpContainer;
 
 public:
-    explicit Connection(internal::INotificationTransfer *service);
+    explicit Connection(std::shared_ptr<EndpointImpl> obj);
     ~Connection();
 
-    void Init(uint64_t cid, std::shared_ptr<EndpointImpl> obj, EpollThread *t);
+    void Init(internal::INotificationTransfer *service, EpollThread *t);
     void SetProtocol(ProtocolHandler *p);
     bool SendMsg(const void *data, size_t data_len);
-    void Shutdown(bool notify = false);
+    void Shutdown(bool notify, const Event &ev = Event());
     bool IsOnline();
-
-    uint64_t Id() const;
 
     void SetExtendInfo(uintptr_t data);
     uintptr_t GetExtendInfo() const;
@@ -58,7 +59,6 @@ private:
 
     bool DoRecvEvent();
     bool DoSendEvent();
-    void ReleaseBuffer();
 
     // if success return the number of parsed packets
     // otherwise return -1 (protocol error)
@@ -67,6 +67,11 @@ private:
     // return true if reach recv buffer tail.
     bool ReadSliceFromRecvBuffer(size_t read_size, Slice &s);
 
+    inline uint32_t HandleId() const {
+        return _handle_id;
+    }
+
+private:
     internal::INotificationTransfer *_service;
     ProtocolHandler *_proto;
     EpollThread *_epoll_thread;
@@ -77,8 +82,11 @@ private:
     Mutex _rcv_mutex;
     Mutex _snd_mutex;
 
-    uintptr_t _ext_data;
     std::shared_ptr<EndpointImpl> _endpoint;
+
+    uint32_t _handle_id;
+
+    static AtomicUInt32 global_counter;
 };
 
 }  // namespace raptor

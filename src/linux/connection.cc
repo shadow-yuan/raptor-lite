@@ -27,31 +27,33 @@
 #include "raptor-lite/impl/endpoint.h"
 #include "raptor-lite/utils/log.h"
 #include "raptor-lite/utils/sync.h"
+#include "raptor-lite/utils/time.h"
 
 #include "src/linux/epoll_thread.h"
 #include "src/linux/socket_setting.h"
 #include "src/common/endpoint_impl.h"
 #include "src/common/service.h"
 #include "src/common/socket_util.h"
-#include "src/utils/time.h"
 
 namespace raptor {
-Connection::Connection(internal::INotificationTransfer *service)
-    : _service(service)
+AtomicUInt32 Connection::global_counter(0);
+Connection::Connection(std::shared_ptr<EndpointImpl> obj)
+    : _service(nullptr)
     , _proto(nullptr)
     , _epoll_thread(nullptr) {
 
-    _ext_data = 0;
+    _handle_id = global_counter.FetchAdd(1, MemoryOrder::RELAXED);
+    _endpoint = obj;
 }
 
 Connection::~Connection() {}
 
-void Connection::Init(uint64_t cid, std::shared_ptr<EndpointImpl> obj, EpollThread *t) {
-    obj->SetConnection(cid);
-    _endpoint.swap(obj);
+void Connection::Init(internal::INotificationTransfer *service, EpollThread *t) {
+    _service = service;
     _epoll_thread = t;
 
-    _epoll_thread->Add(cid, (void *)cid, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
+    _epoll_thread->Add((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
+                       EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
 }
 
 void Connection::SetProtocol(ProtocolHandler *p) {
@@ -62,55 +64,41 @@ bool Connection::SendMsg(const void *data, size_t data_len) {
     if (!_endpoint->IsOnline()) return false;
     AutoMutex g(&_snd_mutex);
     _snd_buffer.AddSlice(Slice(data, data_len));
-    _epoll_thread->Modify(_endpoint->_socket_fd, (void *)_endpoint->_connection_id,
+    _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
                           EPOLLOUT | EPOLLET);
     return true;
 }
 
-void Connection::Shutdown(bool notify) {
+void Connection::Shutdown(bool notify, const Event &ev) {
     if (!_endpoint->IsOnline()) {
         return;
     }
 
-    _epoll_thread->Delete(_endpoint->_socket_fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
+    _epoll_thread->Delete((int)_endpoint->_fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
+    raptor_set_socket_shutdown((int)_endpoint->_fd);
+    _endpoint->_fd = uint64_t(~0);
 
     if (notify) {
-        _service->OnClosed(_endpoint);
+        _service->OnClosed(_endpoint, ev);
     }
 
-    raptor_set_socket_shutdown(_endpoint->_socket_fd);
-    _endpoint->_socket_fd = 0;
+    _rcv_mutex.Lock();
+    _rcv_buffer.ClearBuffer();
+    _rcv_mutex.Unlock();
 
-    memset(&_endpoint->_address, 0, sizeof(_endpoint->_address));
-
-    ReleaseBuffer();
-
-    _ext_data = 0;
+    _snd_mutex.Lock();
+    _snd_buffer.ClearBuffer();
+    _snd_mutex.Unlock();
 }
 
 bool Connection::IsOnline() {
     return _endpoint->IsOnline();
 }
 
-uint64_t Connection::Id() const {
-    return _endpoint->_connection_id;
-}
-
-void Connection::ReleaseBuffer() {
-    {
-        AutoMutex g(&_snd_mutex);
-        _snd_buffer.ClearBuffer();
-    }
-    {
-        AutoMutex g(&_rcv_mutex);
-        _rcv_buffer.ClearBuffer();
-    }
-}
-
 bool Connection::DoRecvEvent() {
     int result = OnRecv();
     if (result == 0) {
-        _epoll_thread->Modify(_endpoint->_socket_fd, (void *)_endpoint->_connection_id,
+        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
                               EPOLLIN | EPOLLET | EPOLLONESHOT);
         return true;
     }
@@ -134,7 +122,7 @@ int Connection::OnRecv() {
         char buffer[8192];
 
         unused_space = sizeof(buffer);
-        recv_bytes = ::recv(_endpoint->_socket_fd, buffer, unused_space, 0);
+        recv_bytes = ::recv((int)_endpoint->_fd, buffer, unused_space, 0);
 
         if (recv_bytes == 0) {
             return -1;
@@ -171,7 +159,7 @@ int Connection::OnSend() {
     do {
 
         Slice slice = _snd_buffer.Front();
-        int slen = ::send(_endpoint->_socket_fd, slice.begin(), slice.size(), 0);
+        int slen = ::send((int)_endpoint->_fd, slice.begin(), slice.size(), 0);
 
         if (slen == 0) {
             return -1;

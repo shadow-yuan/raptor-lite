@@ -42,7 +42,7 @@ public:
  *   1. ProtocolHandler            (optional)
  *   2. MessageHandler             (required)
  *   3. HeartbeatHandler           (optional)
- *   4. EventHandler               (optional)
+ *   4. EndpointClosedHandler      (optional)
  *   5. RecvSendThreads            (optional, default: 1)
  *   6. DefaultContainerSize       (optional, default: 256)
  *   7. MaxContainerSize           (optional, default: 1048576)

@@ -276,7 +276,7 @@ int raptor_sockaddr_get_ip(const raptor_resolved_address *resolved_addr, char *d
             ret = raptor_asprintf(&host_with_scope, "%s%%25%u", ntop_buf, sin6_scope_id);
             if (ret > static_cast<int>(size)) {
                 memcpy(dst, host_with_scope, size);
-                ret = size;
+                ret = static_cast<int>(size);
             } else if (ret > 0) {
                 memcpy(dst, host_with_scope, ret);
             } else {

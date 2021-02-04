@@ -58,9 +58,9 @@ raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
     for (int i = 0; i < threads; i++) {
         bool success = false;
 
-        _threads[i] =
-            Thread("Linux:connector",
-                   std::bind(&TcpConnector::WorkThread, this, std::placeholders::_1), &success);
+        _threads[i] = Thread("Linux:connector",
+                             std::bind(&TcpConnector::WorkThread, this, std::placeholders::_1),
+                             nullptr, &success);
 
         if (!success) {
             break;
@@ -97,7 +97,7 @@ void TcpConnector::Shutdown() {
         AutoMutex g(&_mtex);
         for (auto record : _records) {
             auto entry = reinterpret_cast<struct async_connect_record_entry *>(record);
-            raptor_set_socket_shutdown(entry->fd);
+            close(entry->fd);
         }
         _records.clear();
     }
@@ -144,7 +144,7 @@ raptor_error TcpConnector::AsyncConnect(const raptor_resolved_address *addr, int
     entry->fd = sock_fd;
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
-    _epoll.add(sock_fd, (void *)entry, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP | EPOLLONESHOT);
+    _epoll.add(sock_fd, (void *)entry, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
     return RAPTOR_ERROR_NONE;
 }
 
@@ -169,18 +169,20 @@ void TcpConnector::WorkThread(void *) {
             std::shared_ptr<EndpointImpl> endpoint =
                 std::make_shared<EndpointImpl>(entry->fd, &entry->addr);
 
-            _epoll.remove(entry->fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP | EPOLLONESHOT);
+            _epoll.remove(entry->fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
 
             if (ev->events & EPOLLERR || ev->events & EPOLLHUP || ev->events & EPOLLRDHUP ||
                 ev->events & EPOLLIN) {
                 int error_code = raptor_get_socket_error(entry->fd);
                 raptor_error err = MakeRefCounted<Status>(error_code, "getsockopt(SO_ERROR)");
                 _handler->OnErrorOccurred(endpoint, err);
-                raptor_set_socket_shutdown(entry->fd);
+                close(entry->fd);
             } else if (ev->events & EPOLLOUT) {
                 Property property;
                 _handler->OnConnect(endpoint, property);
-                ProcessProperty(entry->fd, property);
+                if (endpoint->IsOnline()) {
+                    ProcessProperty(entry->fd, property);
+                }
             }
 
             AutoMutex g(&_mtex);

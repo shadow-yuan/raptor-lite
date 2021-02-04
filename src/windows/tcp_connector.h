@@ -21,6 +21,8 @@
 #include <set>
 #include <string>
 
+#include "src/windows/iocp.h"
+#include "src/common/sockaddr.h"
 #include "raptor-lite/impl/property.h"
 #include "raptor-lite/utils/thread.h"
 #include "raptor-lite/utils/sync.h"

@@ -17,30 +17,18 @@
  *
  */
 
-#ifndef __RAPTOR_UTIL_TIME__
-#define __RAPTOR_UTIL_TIME__
+#ifndef __RAPTOR_LITE_UTILS_TIME__
+#define __RAPTOR_LITE_UTILS_TIME__
 
 #include <stdint.h>
-#include <time.h>
 
-#ifdef _WIN32
-#include <winsock.h>
-#else
-#include <sys/time.h>
-#endif
+typedef struct {
+    int64_t tv_sec;  /* seconds */
+    int32_t tv_usec; /* and microseconds */
+} raptor_time_spec;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#ifdef _WIN32
-int gettimeofday(struct timeval *tp, void *tzp);
-#endif
-
+// impl of gettimeofday
+int32_t GetTimeOfDay(raptor_time_spec *rts);
 int64_t GetCurrentMilliseconds();
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif  // __RAPTOR_UTIL_TIME__
+#endif  // __RAPTOR_LITE_UTILS_TIME__

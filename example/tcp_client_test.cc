@@ -3,9 +3,7 @@
 
 #include "raptor-lite/impl/connector.h"
 #include "raptor-lite/impl/property.h"
-#include "raptor-lite/utils/testutil.h"
 
-class ConnectorTestUtil {};
 raptor::Connector *cc = nullptr;
 
 class ClientHandler : public raptor::ConnectorHandler {

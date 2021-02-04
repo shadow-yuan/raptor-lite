@@ -97,6 +97,7 @@ set(
     "${PROJECT_SOURCE_DIR}/src/utils/sync.cc"
     "${PROJECT_SOURCE_DIR}/src/utils/thread.cc"
     "${PROJECT_SOURCE_DIR}/src/utils/time.cc"
+    "${PROJECT_SOURCE_DIR}/src/utils/timer.cc"
 )
 
 set(
@@ -105,6 +106,7 @@ set(
     "${PROJECT_SOURCE_DIR}/src/surface/connector.cc"
     "${PROJECT_SOURCE_DIR}/src/surface/container.cc"
     "${PROJECT_SOURCE_DIR}/src/surface/endpoint.cc"
+    "${PROJECT_SOURCE_DIR}/src/surface/init.cc"
 )
 
 target_sources(raptor-lite
@@ -129,7 +131,7 @@ if(RAPTOR_BUILD_ALLTESTS)
     target_sources("${test_target_name}"
         PRIVATE
         "${PROJECT_SOURCE_DIR}/src/utils/testutil.cc"
-        "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/testutil.h"
+        "${PROJECT_SOURCE_DIR}/src/utils/testutil.h"
 
         "${test_file}"
     )

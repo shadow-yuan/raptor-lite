@@ -18,14 +18,25 @@
 
 #include "src/windows/connection.h"
 #include <string.h>
-#include "src/common/socket_util.h"
-#include "src/windows/socket_setting.h"
+
+#include "raptor-lite/impl/endpoint.h"
+#include "raptor-lite/impl/handler.h"
 #include "raptor-lite/utils/log.h"
 #include "raptor-lite/utils/useful.h"
 
+#include "src/common/cid.h"
+#include "src/common/endpoint_impl.h"
+#include "src/common/socket_util.h"
+#include "src/common/service.h"
+
+#include "src/windows/socket_setting.h"
+
 namespace raptor {
-Connection::Connection(internal::INotificationTransfer *service)
-    : _service(service)
+
+AtomicUInt32 Connection::global_counter(0);
+
+Connection::Connection(std::shared_ptr<EndpointImpl> obj)
+    : _service(nullptr)
     , _proto(nullptr)
     , _send_pending(false) {
 
@@ -34,52 +45,37 @@ Connection::Connection(internal::INotificationTransfer *service)
     _send_overlapped.event = IocpEventType::kSendEvent;
     _recv_overlapped.event = IocpEventType::kRecvEvent;
 
-    memset(&_addr, 0, sizeof(_addr));
+    _endpoint = obj;
 
-    _user_data = 0;
-    _extend_ptr = 0;
+    _handle_id = global_counter.FetchAdd(1, MemoryOrder::RELAXED);
+
+    _send_overlapped.HandleId = _handle_id;
+    _recv_overlapped.HandleId = _handle_id;
 }
 
 Connection::~Connection() {}
 
-void Connection::Init(std::shared_ptr<EndpointImpl> obj) {
-    _endpoint = obj;
-
+bool Connection::Init(internal::INotificationTransfer *service) {
+    _service = service;
     _send_pending = false;
-
-    _user_data = 0;
-    _extend_ptr = 0;
-
-    for (size_t i = 0; i < DEFAULT_TEMP_SLICE_COUNT; i++) {
-        _tmp_buffer[i] = MakeSliceByDefaultSize();
-    }
-
-    char *output = nullptr;
-    int bytes = raptor_sockaddr_to_string(&output, &_addr, 1);
-    if (output && bytes > 0) {
-        _addr_str = Slice(output, static_cast<size_t>(bytes + 1));
-    }
-    if (output) {
-        Free(output);
-    }
-    _service->OnConnectionArrived(cid, &_addr_str);
+    return AsyncRecv();
 }
 
-void Connection::SetProtocol(IProtocol *p) {
+void Connection::SetProtocol(ProtocolHandler *p) {
     _proto = p;
 }
 
-void Connection::Shutdown(bool notify) {
-    if (_fd == INVALID_SOCKET) {
+void Connection::Shutdown(bool notify, const Event &ev) {
+    if (!_endpoint->IsOnline()) {
         return;
     }
 
-    raptor_set_socket_shutdown(_fd);
-    _fd = INVALID_SOCKET;
+    raptor_set_socket_shutdown((SOCKET)_endpoint->_fd);
+    _endpoint->_fd = static_cast<uint64_t>(INVALID_SOCKET);
     _send_pending = false;
 
     if (notify) {
-        _service->OnConnectionClosed(_cid);
+        _service->OnClosed(_endpoint, ev);
     }
 
     _rcv_mtx.Lock();
@@ -89,24 +85,13 @@ void Connection::Shutdown(bool notify) {
     _snd_mtx.Lock();
     _snd_buffer.ClearBuffer();
     _snd_mtx.Unlock();
-
-    for (size_t i = 0; i < DEFAULT_TEMP_SLICE_COUNT; i++) {
-        _tmp_buffer[i] = Slice();
-    }
-    _user_data = 0;
-    _extend_ptr = 0;
 }
 
-bool Connection::SendWithHeader(const void *hdr, size_t hdr_len, const void *data,
-                                size_t data_len) {
-    if (!IsOnline()) return false;
+bool Connection::SendMsg(const void *data, size_t data_len) {
+    if (!_endpoint->IsOnline()) return false;
+
     AutoMutex g(&_snd_mtx);
-    if (hdr != nullptr && hdr_len > 0) {
-        _snd_buffer.AddSlice(Slice(hdr, hdr_len));
-    }
-    if (data != nullptr && data_len > 0) {
-        _snd_buffer.AddSlice(Slice(data, data_len));
-    }
+    _snd_buffer.AddSlice(Slice(data, data_len));
     return AsyncSend();
 }
 
@@ -118,26 +103,32 @@ bool Connection::AsyncSend() {
         return true;
     }
 
-    WSABUF wsa_snd_buf[MAX_WSABUF_COUNT];
-    size_t prepare_send_length = 0;
-    DWORD wsa_buf_count = 0;
+    WSABUF buffers[MAX_WSABUF_COUNT];
+    size_t prepare_send_size = 0;
+    DWORD counter = 0;
 
     _send_pending = true;
 
-    size_t count = _snd_buffer.Count();
-    for (size_t i = 0; i < count && i < MAX_WSABUF_COUNT; i++) {
-        Slice s = _snd_buffer.GetSlice(i);
-        if (prepare_send_length + s.Length() > MAX_PACKAGE_SIZE) {
-            break;
+    _snd_buffer.ForEachSlice([&counter, &prepare_send_size, &buffers](const Slice &s) -> bool {
+        if (counter >= MAX_WSABUF_COUNT) {
+            return false;
         }
-        wsa_snd_buf[i].buf = reinterpret_cast<char *>(s.Buffer());
-        wsa_snd_buf[i].len = static_cast<ULONG>(s.Length());
-        prepare_send_length += s.Length();
-        wsa_buf_count++;
-    }
+
+        if (prepare_send_size + s.Length() > MAX_PACKAGE_SIZE) {
+            return false;
+        }
+
+        buffers[counter].buf = reinterpret_cast<char *>(const_cast<uint8_t *>(s.begin()));
+        buffers[counter].len = static_cast<ULONG>(s.Length());
+        prepare_send_size += s.Length();
+
+        counter++;
+        return true;
+    });
 
     // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasend
-    int ret = WSASend(_fd, wsa_snd_buf, wsa_buf_count, NULL, 0, &_send_overlapped.overlapped, NULL);
+    int ret = WSASend((SOCKET)_endpoint->_fd, buffers, counter, NULL, 0,
+                      &_send_overlapped.overlapped, NULL);
 
     if (ret == SOCKET_ERROR) {
         int error = WSAGetLastError();
@@ -150,16 +141,14 @@ bool Connection::AsyncSend() {
 }
 
 bool Connection::AsyncRecv() {
-    DWORD dwFlag = 0;
-    WSABUF wsa_rcv_buf[DEFAULT_TEMP_SLICE_COUNT];
+    DWORD dwFlags = 0;
+    WSABUF buffer;
 
-    for (size_t i = 0; i < DEFAULT_TEMP_SLICE_COUNT; i++) {
-        wsa_rcv_buf[i].buf = reinterpret_cast<char *>(_tmp_buffer[i].Buffer());
-        wsa_rcv_buf[i].len = static_cast<ULONG>(_tmp_buffer[i].Length());
-    }
+    buffer.buf = NULL;
+    buffer.len = 0;
 
     // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsarecv
-    int ret = WSARecv(_fd, wsa_rcv_buf, DEFAULT_TEMP_SLICE_COUNT, NULL, &dwFlag,
+    int ret = WSARecv((SOCKET)_endpoint->_fd, &buffer, 1, NULL, &dwFlags,
                       &_recv_overlapped.overlapped, NULL);
 
     if (ret == SOCKET_ERROR) {
@@ -172,12 +161,14 @@ bool Connection::AsyncRecv() {
 }
 
 bool Connection::IsOnline() {
-    return (_fd != INVALID_SOCKET);
+    return (_endpoint->IsOnline());
 }
 
 // IOCP Event
-bool Connection::OnSendEvent(size_t size) {
-    RAPTOR_ASSERT(size != 0);
+bool Connection::OnSendEvent(size_t size, uint32_t handle_id) {
+    if (_handle_id != handle_id) return true;
+    if (size == 0) return false;
+
     AutoMutex g(&_snd_mtx);
     _send_pending = false;
     _snd_buffer.MoveHeader(size);
@@ -187,27 +178,37 @@ bool Connection::OnSendEvent(size_t size) {
     return AsyncSend();
 }
 
-bool Connection::OnRecvEvent(size_t size) {
-    RAPTOR_ASSERT(size != 0);
+bool Connection::OnRecvEvent(size_t size, uint32_t handle_id) {
+    (size);
+
+    if (handle_id != _handle_id) {
+        log_error("Connection::OnRecvEvent handle_id not match");
+        return true;
+    }
+
     AutoMutex g(&_rcv_mtx);
-    size_t node_size = _tmp_buffer[0].size();
-    size_t count = size / node_size;
-    size_t i = 0;
+    do {
+        char buff[8192] = {0};
+        int recv_bytes = ::recv((SOCKET)_endpoint->_fd, buff, sizeof(buff), 0);
+        if (recv_bytes == 0) return false;
+        if (recv_bytes < 0) {
+            int err = WSAGetLastError();
+            if (WSAEWOULDBLOCK == err) return true;
+            log_error("Connection::OnRecvEvent recv return <= 0");
+            return false;
+        }
 
-    for (; i < DEFAULT_TEMP_SLICE_COUNT && i < count; i++) {
-        _rcv_buffer.AddSlice(_tmp_buffer[i]);
-        _tmp_buffer[i] = MakeSliceByDefaultSize();
-        size -= node_size;
-    }
+        if (_proto) {
+            _rcv_buffer.AddSlice(Slice(buff, recv_bytes));
+            if (ParsingProtocol() == -1) {
+                return false;
+            }
+        } else {
+            _service->OnDataReceived(_endpoint, Slice(buff, recv_bytes));
+        }
 
-    if (size > 0) {
-        Slice s(_tmp_buffer[i].Buffer(), size);
-        _rcv_buffer.AddSlice(s);
-    }
+    } while (false);
 
-    if (ParsingProtocol() == -1) {
-        return false;
-    }
     return AsyncRecv();
 }
 
@@ -223,7 +224,7 @@ bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice &s) {
 
 int Connection::ParsingProtocol() {
     size_t cache_size = _rcv_buffer.GetBufferLength();
-    size_t header_size = _proto->GetMaxHeaderSize();
+    constexpr size_t header_size = 1024;
     int package_counter = 0;
 
     while (cache_size > 0) {
@@ -232,9 +233,9 @@ int Connection::ParsingProtocol() {
         Slice package;
         do {
             bool reach_tail = ReadSliceFromRecvBuffer(read_size, package);
-            pack_len = _proto->CheckPackageLength(package.begin(), package.size());
+            pack_len = _proto->OnCheckPackageLength(_endpoint, package.begin(), package.size());
             if (pack_len < 0) {
-                log_error("tcp client: internal protocol error(pack_len = %d)", pack_len);
+                log_error("Connection: internal protocol error");
                 return -1;
             }
 
@@ -258,9 +259,9 @@ int Connection::ParsingProtocol() {
             package = _rcv_buffer.GetHeader(pack_len);
         } else {
             size_t n = package.size() - pack_len;
-            package.CutTail(n);
+            package.PopBack(n);
         }
-        _service->OnDataReceived(_cid, &package);
+        _service->OnDataReceived(_endpoint, package);
         _rcv_buffer.MoveHeader(pack_len);
 
         cache_size = _rcv_buffer.GetBufferLength();
@@ -270,38 +271,12 @@ done:
     return package_counter;
 }
 
-void Connection::SetUserData(void *ptr) {
-    _extend_ptr = ptr;
+void Connection::SetExtendInfo(uintptr_t data) {
+    _endpoint->SetExtInfo(data);
 }
 
-void Connection::GetUserData(void **ptr) const {
-    if (ptr) {
-        *ptr = _extend_ptr;
-    }
-}
-
-void Connection::SetExtendInfo(uint64_t data) {
-    _user_data = data;
-}
-
-void Connection::GetExtendInfo(uint64_t &data) const {
-    data = _user_data;
-}
-
-int Connection::GetPeerString(char *buf, int len) {
-    if (!IsOnline()) {
-        return -1;
-    }
-
-    int bytes = static_cast<int>(_addr_str.size());
-    if (len > 0 && bytes > 0) {
-        if (bytes > len) {
-            bytes = len;
-        }
-        memcpy(buf, _addr_str.begin(), bytes);
-        return bytes;
-    }
-    return 0;
+uintptr_t Connection::GetExtendInfo() const {
+    return _endpoint->GetExtInfo();
 }
 
 }  // namespace raptor

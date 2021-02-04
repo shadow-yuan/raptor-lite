@@ -19,36 +19,37 @@
 #include "src/linux/tcp_container.h"
 #include <string.h>
 
-#include "src/linux/tcp_listener.h"
-#include "src/linux/socket_setting.h"
 #include "raptor-lite/utils/mpscq.h"
-#include "src/common/resolve_address.h"
-#include "src/common/socket_util.h"
 #include "raptor-lite/utils/log.h"
-#include "src/utils/time.h"
+#include "raptor-lite/utils/time.h"
 #include "raptor-lite/impl/endpoint.h"
+#include "raptor-lite/impl/event.h"
 #include "src/common/cid.h"
 #include "src/common/endpoint_impl.h"
-#include "raptor-lite/impl/event.h"
+#include "src/common/resolve_address.h"
+#include "src/common/socket_util.h"
+#include "src/linux/tcp_listener.h"
+#include "src/linux/socket_setting.h"
 
 namespace raptor {
-enum MessageType {
+enum TcpMessageType {
     kRecvAMessage,
-    kOtherEvent,
+    kCloseEvent,
+    kHeartbeatEvent,
 };
+
 struct TcpMessageNode {
     MultiProducerSingleConsumerQueue::Node node;
-    MessageType type;
+    TcpMessageType type;
     Endpoint ep;
     Slice slice;
     Event event;
     TcpMessageNode(const Endpoint &o)
-        : ep(o)
-        , event(kNoneError) {}
+        : ep(o) {}
 
-    TcpMessageNode(const Endpoint &o, EventType et)
+    TcpMessageNode(const Endpoint &o, const Event &ev)
         : ep(o)
-        , event(et) {}
+        , event(ev) {}
 };
 
 constexpr uint32_t InvalidIndex = static_cast<uint32_t>(-1);
@@ -74,6 +75,10 @@ raptor_error TcpContainer::Init() {
     }
 
     _epoll_thread->EnableTimeoutCheck(!_option.not_check_connection_timeout);
+    if (_option.heartbeat_handler && _option.heartbeat_handler->GetHeartbeatInterval() > 0) {
+        _timer_thread = std::make_shared<Timer>(this);
+        _timer_thread->Init();
+    }
 
     _shutdown = false;
     _count.Store(0);
@@ -82,9 +87,10 @@ raptor_error TcpContainer::Init() {
     _mq_threads = new Thread[_option.mq_consumer_threads];
     for (size_t i = 0; i < _option.mq_consumer_threads; i++) {
         bool success = false;
-        _mq_threads[i] = Thread(
-            "message_queue",
-            std::bind(&TcpContainer::MessageQueueThread, this, std::placeholders::_1), &success);
+        _mq_threads[i] =
+            Thread("message_queue",
+                   std::bind(&TcpContainer::MessageQueueThread, this, std::placeholders::_1),
+                   nullptr, &success);
 
         if (!success) {
             break;
@@ -119,6 +125,10 @@ raptor_error TcpContainer::Start() {
         _mq_threads[i].Start();
     }
 
+    if (_timer_thread) {
+        _timer_thread->Start();
+    }
+
     return RAPTOR_ERROR_NONE;
 }
 
@@ -127,6 +137,9 @@ void TcpContainer::Shutdown() {
         _shutdown = true;
 
         _epoll_thread->Shutdown();
+        if (_timer_thread) {
+            _timer_thread->Shutdown();
+        }
         _cv.Signal();
 
         for (int i = 0; i < _running_threads; i++) {
@@ -159,8 +172,8 @@ void TcpContainer::Shutdown() {
 }
 
 bool TcpContainer::SendMsg(const Endpoint &ep, const void *data, size_t len) {
-    uint32_t index = CheckConnectionId(ep.ConnectionId());
-    if (index == InvalidIndex) {
+    uint32_t index = 0;
+    if (!CheckConnectionId(ep.ConnectionId(), &index)) {
         return false;
     }
 
@@ -172,8 +185,8 @@ bool TcpContainer::SendMsg(const Endpoint &ep, const void *data, size_t len) {
 }
 
 void TcpContainer::CloseEndpoint(const Endpoint &ep, bool event_notify) {
-    uint32_t index = CheckConnectionId(ep.ConnectionId());
-    if (index == InvalidIndex) {
+    uint32_t index = 0;
+    if (!CheckConnectionId(ep.ConnectionId(), &index)) {
         return;
     }
 
@@ -194,6 +207,8 @@ raptor_error TcpContainer::AttachEndpoint(const Endpoint &ep) {
         return err;
     }
 
+    std::shared_ptr<EndpointImpl> obj = ep._impl;
+
     if (_free_index_list.empty()) {
         size_t count = _mgr.size();
         size_t expand =
@@ -210,41 +225,47 @@ raptor_error TcpContainer::AttachEndpoint(const Endpoint &ep) {
     uint32_t index = _free_index_list.front();
     _free_index_list.pop_front();
 
-    uint16_t listen_port = ep.GetListenPort();
+    uint16_t listen_port = obj->GetListenPort();
     ConnectionId cid = core::BuildConnectionId(_magic_number, listen_port, index);
     int64_t deadline_line = GetCurrentMilliseconds() + _option.connection_timeoutms;
 
-    std::shared_ptr<EndpointImpl> obj = ep._impl;
+    obj->SetConnection(cid);
     obj->SetContainer(this);
 
-    _mgr[index].first = std::make_shared<Connection>(this);
+    _mgr[index].first = std::make_shared<Connection>(obj);
     _mgr[index].first->SetProtocol(_option.proto_handler);
-    _mgr[index].first->Init(cid, obj, _epoll_thread.get());
+    _mgr[index].first->Init(this, _epoll_thread.get());
     _mgr[index].second = _timeout_records.insert({deadline_line, index});
+
+    if (_timer_thread && _option.heartbeat_handler) {
+        uint32_t handle_id = _mgr[index].first->HandleId();
+        uint32_t delay = static_cast<uint32_t>(_option.heartbeat_handler->GetHeartbeatInterval());
+        _timer_thread->SetTimer(index, handle_id, delay);
+    }
     return RAPTOR_ERROR_NONE;
 }
 
 // Receiver implement (epoll event)
 void TcpContainer::OnErrorEvent(void *ptr) {
-    ConnectionId cid = (ConnectionId)ptr;
-    uint32_t index = CheckConnectionId(cid);
-    if (index == InvalidIndex) {
-        log_error("TcpContainer: OnErrorEvent found invalid index, cid = %x", cid);
+    uint32_t index = 0;
+    if (!CheckConnectionId((ConnectionId)ptr, &index)) {
+        log_error("TcpContainer: OnErrorEvent found invalid index, cid = %x", (uint64_t)ptr);
         return;
     }
 
+    raptor_error err = RAPTOR_ERROR_FROM_STATIC_STRING("EpollThread:OnErrorEvent");
+
     auto con = GetConnection(index);
     if (con) {
-        con->Shutdown(true);
+        con->Shutdown(true, Event(kSocketError, err));
         DeleteConnection(index);
     }
 }
 
 void TcpContainer::OnRecvEvent(void *ptr) {
-    ConnectionId cid = (ConnectionId)ptr;
-    uint32_t index = CheckConnectionId(cid);
-    if (index == InvalidIndex) {
-        log_error("TcpContainer: OnRecvEvent found invalid index, cid = %x", cid);
+    uint32_t index = 0;
+    if (!CheckConnectionId((ConnectionId)ptr, &index)) {
+        log_error("TcpContainer: OnRecvEvent found invalid index, cid = %x", (uint64_t)ptr);
         return;
     }
 
@@ -254,16 +275,16 @@ void TcpContainer::OnRecvEvent(void *ptr) {
         RefreshTime(index);
         return;
     }
-    con->Shutdown(true);
+    raptor_error err = RAPTOR_POSIX_ERROR("Connection:DoRecv");
+    con->Shutdown(true, Event(kSocketError, err));
     DeleteConnection(index);
-    log_error("TcpContainer: Failed to post async recv");
+    log_error("TcpContainer: Failed to sync recv");
 }
 
 void TcpContainer::OnSendEvent(void *ptr) {
-    ConnectionId cid = (ConnectionId)ptr;
-    uint32_t index = CheckConnectionId(cid);
-    if (index == InvalidIndex) {
-        log_error("TcpContainer: OnRecvEvent found invalid index, cid = %x", cid);
+    uint32_t index = 0;
+    if (!CheckConnectionId((ConnectionId)ptr, &index)) {
+        log_error("TcpContainer: OnSendEvent found invalid index, cid = %x", (uint64_t)ptr);
         return;
     }
 
@@ -273,9 +294,11 @@ void TcpContainer::OnSendEvent(void *ptr) {
         RefreshTime(index);
         return;
     }
-    con->Shutdown(true);
+
+    raptor_error err = RAPTOR_POSIX_ERROR("Connection:DoSend");
+    con->Shutdown(true, Event(kSocketError, err));
     DeleteConnection(index);
-    log_error("TcpContainer: Failed to post async send");
+    log_error("TcpContainer: Failed to post sync send");
 }
 
 void TcpContainer::OnTimeoutCheck(int64_t current_millseconds) {
@@ -287,6 +310,7 @@ void TcpContainer::OnTimeoutCheck(int64_t current_millseconds) {
     _last_check_time.Store(current_millseconds);
 
     AutoMutex g(&_conn_mtx);
+    raptor_error err = RAPTOR_ERROR_FROM_STATIC_STRING("Connection:Heart-beat Timeout");
 
     auto it = _timeout_records.begin();
     while (it != _timeout_records.end()) {
@@ -298,11 +322,11 @@ void TcpContainer::OnTimeoutCheck(int64_t current_millseconds) {
 
         ++it;
 
-        _mgr[index].first->Shutdown(true);
+        _mgr[index].first->Shutdown(true, Event(kConnectionTimeout, err));
         _mgr[index].first.reset();
         _timeout_records.erase(_mgr[index].second);
         _mgr[index].second = _timeout_records.end();
-        _free_index_list.push_back(index);
+        _free_index_list.emplace_back(index);
     }
 }
 
@@ -311,19 +335,32 @@ void TcpContainer::OnTimeoutCheck(int64_t current_millseconds) {
 void TcpContainer::OnDataReceived(const Endpoint &ep, const Slice &s) {
     TcpMessageNode *msg = new TcpMessageNode(ep);
     msg->slice = s;
-    msg->type = MessageType::kRecvAMessage;
+    msg->type = TcpMessageType::kRecvAMessage;
     _mpscq.push(&msg->node);
     _count.FetchAdd(1, MemoryOrder::ACQ_REL);
     _cv.Signal();
 }
 
-void TcpContainer::OnClosed(const Endpoint &ep) {
-    if (!_option.event_handler) {
+void TcpContainer::OnClosed(const Endpoint &ep, const Event &event) {
+    if (!_option.closed_handler) {
         return;
     }
 
-    TcpMessageNode *msg = new TcpMessageNode(ep, EventType::kConnectionClosed);
-    msg->type = MessageType::kOtherEvent;
+    TcpMessageNode *msg = new TcpMessageNode(ep, event);
+    msg->type = TcpMessageType::kCloseEvent;
+
+    _mpscq.push(&msg->node);
+    _count.FetchAdd(1, MemoryOrder::ACQ_REL);
+    _cv.Signal();
+}
+
+void TcpContainer::OnTimerEvent(const Endpoint &ep) {
+    if (!_option.heartbeat_handler) {
+        return;
+    }
+
+    TcpMessageNode *msg = new TcpMessageNode(ep);
+    msg->type = TcpMessageType::kHeartbeatEvent;
 
     _mpscq.push(&msg->node);
     _count.FetchAdd(1, MemoryOrder::ACQ_REL);
@@ -355,11 +392,14 @@ void TcpContainer::MessageQueueThread(void *ptr) {
 
 void TcpContainer::Dispatch(struct TcpMessageNode *msg) {
     switch (msg->type) {
-    case MessageType::kRecvAMessage:
+    case TcpMessageType::kRecvAMessage:
         _option.msg_handler->OnMessage(msg->ep, msg->slice);
         break;
-    case MessageType::kOtherEvent:
-        _option.event_handler->OnEvent(msg->ep, msg->event);
+    case TcpMessageType::kCloseEvent:
+        _option.closed_handler->OnClosed(msg->ep, msg->event);
+        break;
+    case TcpMessageType::kHeartbeatEvent:
+        _option.heartbeat_handler->OnHeartbeat(msg->ep);
         break;
     default:
         log_error("unknow message type %d", static_cast<int>(msg->type));
@@ -375,7 +415,7 @@ void TcpContainer::DeleteConnection(uint32_t index) {
     _mgr[index].first.reset();
     _timeout_records.erase(_mgr[index].second);
     _mgr[index].second = _timeout_records.end();
-    _free_index_list.push_back(index);
+    _free_index_list.emplace_back(index);
 }
 
 void TcpContainer::RefreshTime(uint32_t index) {
@@ -388,27 +428,42 @@ void TcpContainer::RefreshTime(uint32_t index) {
     _mgr[index].second = _timeout_records.insert({deadline_line, index});
 }
 
-uint32_t TcpContainer::CheckConnectionId(ConnectionId cid) const {
-    uint32_t failure = InvalidIndex;
+bool TcpContainer::CheckConnectionId(uint64_t cid, uint32_t *index) const {
     if (cid == core::InvalidConnectionId) {
-        return failure;
+        return false;
     }
     uint16_t magic = core::GetMagicNumber(cid);
     if (magic != _magic_number) {
-        return failure;
+        return false;
     }
 
-    uint32_t uid = core::GetUserId(cid);
-    if (uid >= _option.max_container_size) {
-        return failure;
+    uint32_t idx = core::GetUserId(cid);
+    if (idx == InvalidIndex || idx >= _option.max_container_size) {
+        return false;
     }
-    return uid;
+    *index = idx;
+    return true;
 }
 
 std::shared_ptr<Connection> TcpContainer::GetConnection(uint32_t index) {
     AutoMutex g(&_conn_mtx);
     auto obj = _mgr[index].first;
     return obj;
+}
+
+void TcpContainer::OnTimer(uint32_t tid1, uint32_t tid2) {
+    // tid1 = index, tid2 = handle_id
+    std::shared_ptr<Connection> conn = GetConnection(tid1);
+    if (!conn) {
+        return;
+    }
+    if (conn->HandleId() == tid2 && conn->IsOnline()) {
+        OnTimerEvent(conn->_endpoint);
+
+        // prepare next timer
+        uint32_t delay = static_cast<uint32_t>(_option.heartbeat_handler->GetHeartbeatInterval());
+        _timer_thread->SetTimer(tid1, tid2, delay);
+    }
 }
 
 }  // namespace raptor

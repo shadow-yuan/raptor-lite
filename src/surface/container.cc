@@ -78,7 +78,7 @@ void ContainerAdaptor::CloseEndpoint(const Endpoint &ep, bool event_notify) {
  *   1. ProtocolHandler            (optional)
  *   2. MessageHandler             (required)
  *   3. HeartbeatHandler           (optional)
- *   4. EventHandler               (optional)
+ *   4. EndpointClosedHandler      (optional)
  *   5. RecvSendThreads            (optional, default: 1)
  *   6. DefaultContainerSize       (optional, default: 256)
  *   7. MaxContainerSize           (optional, default: 1048576)
@@ -103,8 +103,8 @@ raptor_error CreateContainer(const Property &p, Container **out) {
     option.heartbeat_handler =
         reinterpret_cast<HeartbeatHandler *>(p.GetValue<intptr_t>("HeartbeatHandler", 0));
 
-    option.event_handler =
-        reinterpret_cast<EventHandler *>(p.GetValue<intptr_t>("EventHandler", 0));
+    option.closed_handler =
+        reinterpret_cast<EndpointClosedHandler *>(p.GetValue<intptr_t>("EndpointClosedHandler", 0));
 
     option.recv_send_threads = p.GetValue("RecvSendThreads", 1);
     option.default_container_size = p.GetValue("DefaultContainerSize", 256);

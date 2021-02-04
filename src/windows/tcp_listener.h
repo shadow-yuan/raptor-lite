@@ -23,9 +23,10 @@
 
 #include "src/windows/iocp.h"
 #include "src/common/sockaddr.h"
-#include "src/utils/list_entry.h"
+#include "raptor-lite/utils/list_entry.h"
 #include "raptor-lite/utils/sync.h"
 #include "raptor-lite/utils/thread.h"
+#include "src/common/resolve_address.h"
 
 namespace raptor {
 class AcceptorHandler;

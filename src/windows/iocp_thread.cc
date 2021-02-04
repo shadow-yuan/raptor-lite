@@ -19,62 +19,69 @@
 #include "src/windows/iocp_thread.h"
 #include <string.h>
 #include "raptor-lite/utils/log.h"
-#include "src/utils/time.h"
+#include "raptor-lite/utils/time.h"
 
 namespace raptor {
-SendRecvThread::SendRecvThread(internal::IIocpReceiver *service)
+IocpThread::IocpThread(internal::IIocpReceiver *service)
     : _service(service)
     , _shutdown(true)
-    , _rs_threads(0)
+    , _enable_timeout_check(false)
+    , _number_of_threads(0)
+    , _running_threads(0)
     , _threads(nullptr) {
     memset(&_exit, 0, sizeof(_exit));
 }
 
-SendRecvThread::~SendRecvThread() {
+IocpThread::~IocpThread() {
     if (!_shutdown) {
         Shutdown();
     }
 }
 
-RefCountedPtr<Status> SendRecvThread::Init(size_t rs_threads, size_t kernel_threads) {
+RefCountedPtr<Status> IocpThread::Init(size_t rs_threads, size_t kernel_threads) {
     if (!_shutdown) return RAPTOR_ERROR_NONE;
 
-    auto e = _iocp.create(kernel_threads);
+    auto e = _iocp.create(static_cast<DWORD>(kernel_threads));
     if (e != RAPTOR_ERROR_NONE) {
         return e;
     }
 
     _shutdown = false;
-    _rs_threads = rs_threads;
+    _number_of_threads = rs_threads;
     _threads = new Thread[rs_threads];
-    for (size_t i = 0; i < rs_threads; i++) {
-        _threads[i] = Thread(
-            "send/recv",
-            [](void *param) -> void {
-                SendRecvThread *p = (SendRecvThread *)param;
-                p->WorkThread();
-            },
-            this);
+    _running_threads = 0;
+
+    for (size_t i = 0; i < _number_of_threads; i++) {
+        bool success = false;
+        _threads[i] =
+            Thread("iocp:thread", std::bind(&IocpThread::WorkThread, this, std::placeholders::_1),
+                   nullptr, &success);
+        if (!success) {
+            break;
+        }
+        _running_threads++;
+    }
+    if (_running_threads == 0) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("IocpThread: Failed to create thread");
     }
     return RAPTOR_ERROR_NONE;
 }
 
-bool SendRecvThread::Start() {
-    if (!_shutdown) {
-        RAPTOR_ASSERT(_threads != nullptr);
-        for (size_t i = 0; i < _rs_threads; i++) {
-            _threads[i].Start();
-        }
-        return true;
+raptor_error IocpThread::Start() {
+    if (_shutdown) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("IocpThread is not initialized");
     }
-    return false;
+    for (size_t i = 0; i < _running_threads; i++) {
+        _threads[i].Start();
+    }
+    return RAPTOR_ERROR_NONE;
 }
 
-void SendRecvThread::Shutdown() {
+void IocpThread::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
         _iocp.post(NULL, &_exit);
-        for (size_t i = 0; i < _rs_threads; i++) {
+        for (size_t i = 0; i < _running_threads; i++) {
             _threads[i].Join();
         }
         delete[] _threads;
@@ -82,15 +89,21 @@ void SendRecvThread::Shutdown() {
     }
 }
 
-bool SendRecvThread::Add(SOCKET sock, void *CompletionKey) {
+bool IocpThread::Add(SOCKET sock, void *CompletionKey) {
     return _iocp.add(sock, CompletionKey);
 }
 
-void SendRecvThread::WorkThread() {
+void IocpThread::EnableTimeoutCheck(bool b) {
+    _enable_timeout_check = b;
+}
+
+void IocpThread::WorkThread(void *) {
     while (!_shutdown) {
 
-        time_t current_time = Now();
-        _service->OnCheckingEvent(current_time);
+        if (_enable_timeout_check) {
+            int64_t current_millseconds = GetCurrentMilliseconds();
+            _service->OnTimeoutCheck(current_millseconds);
+        }
 
         DWORD NumberOfBytesTransferred = 0;
         void *CompletionKey = NULL;
@@ -98,7 +111,7 @@ void SendRecvThread::WorkThread() {
 
         // https://docs.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-getqueuedcompletionstatus
         bool ret = _iocp.polling(&NumberOfBytesTransferred, (PULONG_PTR)&CompletionKey,
-                                 &lpOverlapped, INFINITE);
+                                 &lpOverlapped, 1000);
 
         if (!ret) {
 
@@ -131,24 +144,16 @@ void SendRecvThread::WorkThread() {
         }
 
         // shutdown signal
-
         if (lpOverlapped == &_exit) {
             break;
         }
 
-        // error
-        if (NumberOfBytesTransferred == 0) {
-            DWORD err_code = GetLastError();
-            _service->OnErrorEvent(CompletionKey, static_cast<size_t>(err_code));
-            continue;
-        }
-
         OverLappedEx *ptr = (OverLappedEx *)lpOverlapped;
         if (ptr->event == IocpEventType::kRecvEvent) {
-            _service->OnRecvEvent(CompletionKey, NumberOfBytesTransferred);
+            _service->OnRecvEvent(CompletionKey, NumberOfBytesTransferred, ptr->HandleId);
         }
         if (ptr->event == IocpEventType::kSendEvent) {
-            _service->OnSendEvent(CompletionKey, NumberOfBytesTransferred);
+            _service->OnSendEvent(CompletionKey, NumberOfBytesTransferred, ptr->HandleId);
         }
     }
 }

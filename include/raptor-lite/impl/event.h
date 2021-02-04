@@ -20,28 +20,22 @@
 #define __RAPTOR_LITE_EVENT__
 
 #include <stddef.h>
-#include <string>
+
+#include "raptor-lite/utils/status.h"
 
 namespace raptor {
 
-typedef enum {
-    kNoneError,
-    kSocketError,
-    kHeartbeatTimeout,
-    kConnectFailed,
-    kConnectionClosed
-} EventType;
+typedef enum { kManualShutdown, kSocketError, kConnectionTimeout } EventType;
 
 class Event final {
 public:
-    Event(EventType t)
-        : _type(t)
-        , _error_code(0) {}
+    Event()
+        : _type(kManualShutdown)
+        , _desc(nullptr) {}
 
-    Event(EventType t, const std::string &desc, int err)
+    Event(EventType t, raptor_error err)
         : _type(t)
-        , _desc(desc)
-        , _error_code(err) {}
+        , _desc(err) {}
 
     ~Event() {}
 
@@ -49,26 +43,20 @@ public:
         return _type;
     }
 
-    const std::string &What() const {
-        return _desc;
+    std::string What() const {
+        if (_desc == RAPTOR_ERROR_NONE) {
+            return std::string();
+        }
+        return _desc->ToString();
     }
 
     int ErrorCode() const {
-        return _error_code;
-    }
-
-    void SetErrorCode(int e) {
-        _error_code = e;
-    }
-
-    void SetErrorDesc(const std::string &desc) {
-        _desc = desc;
+        return _desc->ErrorCode();
     }
 
 private:
     EventType _type;
-    std::string _desc;
-    int _error_code;
+    raptor_error _desc;
 };
 }  // namespace raptor
 #endif  // __RAPTOR_LITE_EVENT__

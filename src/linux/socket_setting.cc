@@ -322,7 +322,7 @@ raptor_error raptor_tcp_server_prepare_socket(int fd, const raptor_resolved_addr
     sockname_temp.len = static_cast<socklen_t>(sizeof(struct sockaddr_storage));
 
     if (getsockname(fd, reinterpret_cast<raptor_sockaddr *>(sockname_temp.addr),
-                    &sockname_temp.len) < 0) {
+                    reinterpret_cast<socklen_t *>(&sockname_temp.len)) < 0) {
         err = RAPTOR_POSIX_ERROR("getsockname");
         goto error;
     }

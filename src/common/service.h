@@ -26,6 +26,7 @@ namespace raptor {
 
 class Slice;
 class Endpoint;
+class Event;
 
 namespace internal {
 
@@ -44,8 +45,8 @@ class IIocpReceiver {
 public:
     virtual ~IIocpReceiver() {}
     virtual void OnErrorEvent(void *ptr, size_t err_code) = 0;
-    virtual void OnRecvEvent(void *ptr, size_t transferred_bytes) = 0;
-    virtual void OnSendEvent(void *ptr, size_t transferred_bytes) = 0;
+    virtual void OnRecvEvent(void *ptr, size_t transferred_bytes, uint32_t handle_id) = 0;
+    virtual void OnSendEvent(void *ptr, size_t transferred_bytes, uint32_t handle_id) = 0;
     virtual void OnTimeoutCheck(int64_t current_millseconds) = 0;
 };
 
@@ -53,7 +54,7 @@ class INotificationTransfer {
 public:
     virtual ~INotificationTransfer() {}
     virtual void OnDataReceived(const Endpoint &ep, const Slice &s) = 0;
-    virtual void OnClosed(const Endpoint &ep) = 0;
+    virtual void OnClosed(const Endpoint &ep, const Event& event) = 0;
 };
 
 }  // namespace internal

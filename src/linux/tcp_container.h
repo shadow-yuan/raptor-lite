@@ -26,20 +26,23 @@
 #include <utility>
 #include <vector>
 
-#include "src/linux/epoll_thread.h"
-#include "src/linux/connection.h"
 #include "raptor-lite/utils/mpscq.h"
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/sync.h"
 #include "raptor-lite/impl/handler.h"
-#include "src/common/service.h"
 #include "raptor-lite/impl/container.h"
+
+#include "src/common/service.h"
+#include "src/linux/epoll_thread.h"
+#include "src/linux/connection.h"
+#include "src/utils/timer.h"
 
 namespace raptor {
 class IProtocol;
 class TcpListener;
 struct TcpMessageNode;
 class TcpContainer : public Container,
+                     public TimerHandler,
                      public internal::IEpollReceiver,
                      public internal::INotificationTransfer {
 public:
@@ -53,7 +56,7 @@ public:
         MessageHandler *msg_handler = nullptr;
         ProtocolHandler *proto_handler = nullptr;
         HeartbeatHandler *heartbeat_handler = nullptr;
-        EventHandler *event_handler = nullptr;
+        EndpointClosedHandler *closed_handler = nullptr;
     } Option;
 
     explicit TcpContainer(TcpContainer::Option *option);
@@ -74,16 +77,17 @@ public:
 
     // internal::INotificationTransfer impl
     void OnDataReceived(const Endpoint &ep, const Slice &s) override;
-    void OnClosed(const Endpoint &ep) override;
+    void OnClosed(const Endpoint &ep, const Event &event) override;
 
 private:
-    void TimeoutCheckThread(void *);
     void MessageQueueThread(void *);
-    uint32_t CheckConnectionId(uint64_t cid) const;
+    bool CheckConnectionId(uint64_t cid, uint32_t *index) const;
     void Dispatch(struct TcpMessageNode *msg);
     void DeleteConnection(uint32_t index);
     void RefreshTime(uint32_t index);
     std::shared_ptr<Connection> GetConnection(uint32_t index);
+    void OnTimerEvent(const Endpoint &ep);
+    void OnTimer(uint32_t tid1, uint32_t tid2) override;
 
 private:
     using TimeoutRecordMap = std::multimap<int64_t, uint32_t>;
@@ -100,6 +104,7 @@ private:
     int _running_threads;
 
     std::shared_ptr<EpollThread> _epoll_thread;
+    std::shared_ptr<Timer> _timer_thread;
 
     Mutex _conn_mtx;
     std::vector<ConnectionInfo> _mgr;

@@ -22,9 +22,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "raptor-lite/utils/atomic.h"
-#include "src/utils/time.h"
+#include "raptor-lite/utils/time.h"
 
 #ifdef _WIN32
+#include <Windows.h>
 #include <processthreadsapi.h>
 #else
 #include <pthread.h>
@@ -60,8 +61,8 @@ void log_default_print(LogArgument *args) {
         display_file = last_slash + 1;
     }
 
-    struct timeval now;
-    gettimeofday(&now, nullptr);
+    raptor_time_spec now;
+    GetTimeOfDay(&now);
     time_t timer = now.tv_sec;
 
 #ifdef _WIN32

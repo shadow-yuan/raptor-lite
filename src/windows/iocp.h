@@ -19,19 +19,18 @@
 #ifndef __RAPTOR_CORE_WINDOWS_IOCP__
 #define __RAPTOR_CORE_WINDOWS_IOCP__
 
+#include <stdint.h>
 #include <winsock2.h>
 #include "raptor-lite/utils/status.h"
 
 namespace raptor {
-enum class IocpEventType {
-    kAcceptEvent,
-    kSendEvent,
-    kRecvEvent
-};
+
+enum class IocpEventType { kAcceptEvent, kSendEvent, kRecvEvent };
 
 typedef struct {
     OVERLAPPED overlapped;
     IocpEventType event;
+    uint32_t HandleId;
 } OverLappedEx;
 
 class Iocp final {
@@ -41,16 +40,13 @@ public:
     RefCountedPtr<Status> create(DWORD max_threads = 0);
     void shutdown();
 
-    bool add(SOCKET sock, void* CompletionKey);
-    bool polling(
-        DWORD* NumberOfBytesTransferred,
-        PULONG_PTR CompletionKey,
-        LPOVERLAPPED *lpOverlapped,
-        DWORD timeout_ms = 1000);
-    void post(void* CompletionKey, LPOVERLAPPED Overlapped);
+    bool add(SOCKET sock, void *CompletionKey);
+    bool polling(DWORD *NumberOfBytesTransferred, PULONG_PTR CompletionKey,
+                 LPOVERLAPPED *lpOverlapped, DWORD timeout_ms = 1000);
+    void post(void *CompletionKey, LPOVERLAPPED Overlapped);
 
 private:
     HANDLE _handle;
 };
-} // namespace raptor
+}  // namespace raptor
 #endif  // __RAPTOR_CORE_WINDOWS_IOCP__

@@ -16,9 +16,10 @@
  *
  */
 
-#include "src/utils/cpu.h"
+#include "raptor-lite/utils/cpu.h"
 
 #ifdef _WIN32
+#include <Windows.h>
 #include <sysinfoapi.h>
 #else
 #include <unistd.h>

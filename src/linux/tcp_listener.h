@@ -21,7 +21,7 @@
 
 #include "src/linux/epoll.h"
 #include "src/common/resolve_address.h"
-#include "src/utils/list_entry.h"
+#include "raptor-lite/utils/list_entry.h"
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/sync.h"
 #include "raptor-lite/utils/thread.h"

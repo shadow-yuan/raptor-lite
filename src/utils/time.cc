@@ -16,7 +16,15 @@
  *
  */
 
-#include "src/utils/time.h"
+#include "raptor-lite/utils/time.h"
+
+#include <time.h>
+
+#ifdef _WIN32
+#include <winsock.h>
+#else
+#include <sys/time.h>
+#endif
 
 #ifdef _WIN32
 int gettimeofday(struct timeval *tp, void *tzp) {
@@ -34,6 +42,14 @@ int gettimeofday(struct timeval *tp, void *tzp) {
     return (0);
 }
 #endif
+
+int32_t GetTimeOfDay(raptor_time_spec *rts) {
+    struct timeval tp;
+    int r = gettimeofday(&tp, NULL);
+    rts->tv_sec = tp.tv_sec;
+    rts->tv_usec = tp.tv_usec;
+    return r;
+}
 
 int64_t GetCurrentMilliseconds() {
     struct timeval tp;

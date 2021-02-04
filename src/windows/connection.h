@@ -23,43 +23,44 @@
 #include <stdint.h>
 #include <memory>
 
-#include "src/common/cid.h"
-#include "src/common/resolve_address.h"
-#include "src/common/service.h"
-#include "raptor-lite/utils/slice.h"
+#include "raptor-lite/impl/event.h"
 #include "raptor-lite/utils/slice_buffer.h"
-#include "src/windows/iocp.h"
 #include "raptor-lite/utils/sync.h"
-#include "src/common/endpoint_impl.h"
-#include "raptor-lite/impl/handler.h"
+#include "raptor-lite/utils/atomic.h"
+
+#include "src/windows/iocp.h"
 
 namespace raptor {
+
+class EndpointImpl;
+class ProtocolHandler;
+
+namespace internal {
+class INotificationTransfer;
+}  // namespace internal
+
 class Connection final {
-    friend class TcpServer;
     friend class TcpContainer;
-    
+
 public:
-    explicit Connection(internal::INotificationTransfer *service);
+    explicit Connection(std::shared_ptr<EndpointImpl> obj);
     ~Connection();
 
     // Before Init, sock must be associated with iocp
-    void Init(std::shared_ptr<EndpointImpl> obj);
+    bool Init(internal::INotificationTransfer *service);
     void SetProtocol(ProtocolHandler *p);
-    void Shutdown(bool notify);
+    void Shutdown(bool notify, const Event &ev = Event());
 
-    bool SendWithHeader(const void *hdr, size_t hdr_len, const void *data, size_t data_len);
+    bool SendMsg(const void *data, size_t data_len);
     bool IsOnline();
 
-    void SetUserData(void *ptr);
-    void GetUserData(void **ptr) const;
-    void SetExtendInfo(uint64_t data);
-    void GetExtendInfo(uint64_t &data) const;
-    int GetPeerString(char *buf, int buf_size);
+    void SetExtendInfo(uintptr_t data);
+    uintptr_t GetExtendInfo() const;
 
 private:
     // IOCP Event
-    bool OnSendEvent(size_t size);
-    bool OnRecvEvent(size_t size);
+    bool OnSendEvent(size_t size, uint32_t handle_id);
+    bool OnRecvEvent(size_t size, uint32_t handle_id);
 
     // if success return the number of parsed packets
     // otherwise return -1 (protocol error)
@@ -71,33 +72,30 @@ private:
     bool AsyncSend();
     bool AsyncRecv();
 
-private:
-    enum { DEFAULT_TEMP_SLICE_COUNT = 2 };
+    inline uint32_t HandleId() const {
+        return _handle_id;
+    }
 
+private:
     internal::INotificationTransfer *_service;
     ProtocolHandler *_proto;
-    std::shared_ptr<EndpointImpl> _endpoint;
 
     bool _send_pending;
-
-    SOCKET _fd;
 
     OverLappedEx _send_overlapped;
     OverLappedEx _recv_overlapped;
 
-    raptor_resolved_address _addr;
-    Slice _addr_str;
-
     SliceBuffer _rcv_buffer;
     SliceBuffer _snd_buffer;
-
-    Slice _tmp_buffer[DEFAULT_TEMP_SLICE_COUNT];
 
     Mutex _rcv_mtx;
     Mutex _snd_mtx;
 
-    uint64_t _user_data;
-    void *_extend_ptr;
+    std::shared_ptr<EndpointImpl> _endpoint;
+
+    uint32_t _handle_id;
+
+    static AtomicUInt32 global_counter;
 };
 }  // namespace raptor
 #endif  // __RAPTOR_CORE_WINDOWS_CONNECTION__

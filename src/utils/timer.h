@@ -16,40 +16,43 @@
  *
  */
 
-#ifndef __RAPTOR_CORE_EPOLL_THREAD__
-#define __RAPTOR_CORE_EPOLL_THREAD__
+#ifndef __RAPTOR_UTILS_TIMER__
+#define __RAPTOR_UTILS_TIMER__
 
 #include <stdint.h>
-#include "src/linux/epoll.h"
-#include "raptor-lite/utils/status.h"
+#include <map>
+
+#include "raptor-lite/utils/mpscq.h"
 #include "raptor-lite/utils/thread.h"
-#include "src/common/service.h"
 
 namespace raptor {
-class EpollThread final {
+class TimerHandler {
 public:
-    explicit EpollThread(internal::IEpollReceiver *rcv);
-    ~EpollThread();
+    virtual ~TimerHandler() {}
+    virtual void OnTimer(uint32_t tid1, uint32_t tid2) = 0;
+};
 
-    raptor_error Init(int threads = 1);
-    raptor_error Start();
+class Timer final {
+public:
+    explicit Timer(TimerHandler *p);
+    ~Timer();
+
+    void Init();
+    void Start();
     void Shutdown();
-    void EnableTimeoutCheck(bool b);
 
-    int Add(int fd, void *data, uint32_t events);
-    int Modify(int fd, void *data, uint32_t events);
-    int Delete(int fd, uint32_t events);
+    void SetTimer(uint32_t tid1, uint32_t tid2, uint32_t delay_ms);
 
 private:
-    void DoWork(void *ptr);
-    internal::IEpollReceiver *_receiver;
+    void WorkThread(void *);
+
+    TimerHandler *_handler;
     bool _shutdown;
-    bool _enable_timeout_check;
-    int _number_of_threads;
-    int _running_threads;
-    Epoll _epoll;
-    Thread *_threads;
+    std::multimap<int64_t, uint64_t> _tbls;
+    MultiProducerSingleConsumerQueue _mq;
+    Thread _thd;
 };
 
 }  // namespace raptor
-#endif  // __RAPTOR_CORE_EPOLL_THREAD__
+
+#endif  // __RAPTOR_UTILS_TIMER__

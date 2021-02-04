@@ -45,16 +45,16 @@ public:
     virtual ~HeartbeatHandler() {}
 
     // heart-beat event
-    virtual void OnHeartbeat() = 0;
+    virtual void OnHeartbeat(const Endpoint &ep) = 0;
 
     // millseconds
     virtual size_t GetHeartbeatInterval() = 0;
 };
 
-class EventHandler {
+class EndpointClosedHandler {
 public:
-    virtual ~EventHandler() {}
-    virtual void OnEvent(const Endpoint &ep, const Event &event) = 0;
+    virtual ~EndpointClosedHandler() {}
+    virtual void OnClosed(const Endpoint &ep, const Event &event) = 0;
 };
 
 }  // namespace raptor

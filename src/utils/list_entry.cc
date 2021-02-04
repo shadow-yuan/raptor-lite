@@ -16,7 +16,7 @@
  *
  */
 
-#include "src/utils/list_entry.h"
+#include "raptor-lite/utils/list_entry.h"
 
 void raptor_list_push_front(list_entry *head, list_entry *new_item) {
     list_entry *first = head->next;

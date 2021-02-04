@@ -74,7 +74,7 @@ public:
     uintptr_t GetExtInfo() const;
 
 private:
-    uint64_t _socket_fd;
+    uint64_t _fd;
     uint64_t _connection_id;
     Container *_container;
     uint16_t _listen_port;

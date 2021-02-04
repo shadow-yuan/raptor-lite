@@ -26,7 +26,7 @@
 
 typedef struct {
     char addr[128];
-    uint32_t len;
+    size_t len;
 } raptor_resolved_address;
 
 typedef struct {

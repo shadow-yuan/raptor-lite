@@ -14,7 +14,7 @@
 namespace raptor {
 
 EndpointImpl::EndpointImpl(uint64_t fd, raptor_resolved_address *addr)
-    : _socket_fd(fd)
+    : _fd(fd)
     , _connection_id(core::InvalidConnectionId)
     , _container(nullptr) {
     _listen_port = 0;
@@ -40,7 +40,7 @@ uint64_t EndpointImpl::ConnectionId() const {
     return _connection_id;
 }
 uint64_t EndpointImpl::SocketFd() const {
-    return _socket_fd;
+    return _fd;
 }
 
 uint16_t EndpointImpl::GetListenPort() const {
@@ -74,26 +74,38 @@ bool EndpointImpl::SendMsg(const void *data, size_t len) {
 }
 
 int EndpointImpl::SyncSend(const void *data, size_t len) {
-    return ::send(_socket_fd, data, len, 0);
+#ifdef _WIN32
+    return ::send((SOCKET)_fd, (const char *)data, (int)len, 0);
+#else
+    return ::send((int)_fd, data, len, 0);
+#endif
 }
 
 int EndpointImpl::SyncRecv(void *data, size_t len) {
-    return ::recv(_socket_fd, data, len, 0);
+#ifdef _WIN32
+    return ::recv((SOCKET)_fd, (char *)data, (int)len, 0);
+#else
+    return ::recv((int)_fd, data, len, 0);
+#endif
 }
 
 bool EndpointImpl::Close(bool notify) {
     if (_container) {
         _container->CloseEndpoint(GetEndpointImpl(), notify);
     } else {
-        raptor_set_socket_shutdown(_socket_fd);
-        _socket_fd = uint64_t(-1);
+#ifdef _WIN32
+        raptor_set_socket_shutdown((SOCKET)_fd);
+#else
+        raptor_set_socket_shutdown((int)_fd);
+#endif
+        _fd = uint64_t(~0);
     }
     return true;
 }
 
 std::string EndpointImpl::LocalIp() const {
     raptor_resolved_address local;
-    int ret = raptor_get_local_sockaddr(_socket_fd, &local);
+    int ret = raptor_get_local_sockaddr(_fd, &local);
     if (ret != 0) {
         return std::string();
     }
@@ -105,12 +117,12 @@ std::string EndpointImpl::LocalIp() const {
 
 uint16_t EndpointImpl::LocalPort() const {
     raptor_resolved_address local;
-    int ret = raptor_get_local_sockaddr(_socket_fd, &local);
+    int ret = raptor_get_local_sockaddr(_fd, &local);
     if (ret != 0) {
         return 0;
     }
 
-    return raptor_sockaddr_get_port(&local);
+    return static_cast<uint16_t>(raptor_sockaddr_get_port(&local));
 }
 
 std::string EndpointImpl::RemoteIp() const {
@@ -120,11 +132,11 @@ std::string EndpointImpl::RemoteIp() const {
 }
 
 uint16_t EndpointImpl::RemotePort() const {
-    return raptor_sockaddr_get_port(&_address);
+    return static_cast<uint16_t>(raptor_sockaddr_get_port(&_address));
 }
 
 bool EndpointImpl::IsOnline() const {
-    return _socket_fd != uint64_t(-1) && _socket_fd > 0;
+    return _fd != uint64_t(~0) && _fd > 0;
 }
 
 void EndpointImpl::SetExtInfo(uintptr_t info) {

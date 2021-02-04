@@ -17,14 +17,14 @@
  */
 
 #include "src/linux/epoll_thread.h"
-#include "src/utils/time.h"
+#include "raptor-lite/utils/time.h"
 #include "src/common/service.h"
 
 namespace raptor {
 EpollThread::EpollThread(internal::IEpollReceiver *rcv)
     : _receiver(rcv)
     , _shutdown(true)
-    , _timeout_check(false)
+    , _enable_timeout_check(false)
     , _number_of_threads(0)
     , _running_threads(0) {}
 
@@ -49,8 +49,9 @@ RefCountedPtr<Status> EpollThread::Init(int threads) {
     for (int i = 0; i < threads; i++) {
         bool success = false;
 
-        _threads[i] = Thread(
-            "epoll:thread", std::bind(&EpollThread::DoWork, this, std::placeholders::_1), &success);
+        _threads[i] =
+            Thread("epoll:thread", std::bind(&EpollThread::DoWork, this, std::placeholders::_1),
+                   nullptr, &success);
 
         if (!success) {
             break;
@@ -89,13 +90,13 @@ void EpollThread::Shutdown() {
 }
 
 void EpollThread::EnableTimeoutCheck(bool b) {
-    _timeout_check = b;
+    _enable_timeout_check = b;
 }
 
 void EpollThread::DoWork(void *ptr) {
     while (!_shutdown) {
 
-        if (_timeout_check) {
+        if (_enable_timeout_check) {
             int64_t current_time = GetCurrentMilliseconds();
             _receiver->OnTimeoutCheck(current_time);
         }

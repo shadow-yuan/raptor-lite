@@ -21,6 +21,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <functional>
 #include <vector>
 
 #include "raptor-lite/utils/slice.h"
@@ -48,6 +49,9 @@ public:
 
     void PopFront();
     void PopBack();
+
+    // callback returns false to interrupt the loop
+    void ForEachSlice(std::function<bool(const Slice &s)> callback);
 
 private:
     size_t CopyToBuffer(void *buff, size_t len);
