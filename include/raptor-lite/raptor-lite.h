@@ -26,7 +26,6 @@
 #include <raptor-lite/impl/event.h>
 #include <raptor-lite/impl/handler.h>
 #include <raptor-lite/impl/property.h>
-#include <raptor-lite/impl/server.h>
 
 #include <raptor-lite/utils/atomic.h>
 #include <raptor-lite/utils/cpu.h>
