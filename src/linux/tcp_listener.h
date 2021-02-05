@@ -19,30 +19,36 @@
 #ifndef __RAPTOR_CORE_LINUX_TCP_LISTENER__
 #define __RAPTOR_CORE_LINUX_TCP_LISTENER__
 
-#include "src/linux/epoll.h"
-#include "src/common/resolve_address.h"
+#include <memory>
+
 #include "raptor-lite/utils/list_entry.h"
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/sync.h"
 #include "raptor-lite/utils/thread.h"
 #include "raptor-lite/impl/acceptor.h"
 
+#include "src/common/resolve_address.h"
+#include "src/linux/epoll_thread.h"
+
 namespace raptor {
 class AcceptorHandler;
 struct ListenerObject;
+class Property;
 
-class TcpListener final {
+class TcpListener final : public internal::EventReceivingService {
 public:
     explicit TcpListener(AcceptorHandler *handler);
     ~TcpListener();
 
-    RefCountedPtr<Status> Init(int threads = 1);
-    RefCountedPtr<Status> AddListeningPort(const raptor_resolved_address *addr);
-    RefCountedPtr<Status> Start();
+    raptor_error Init(int threads = 1);
+    raptor_error AddListeningPort(const raptor_resolved_address *addr);
+    raptor_error Start();
     void Shutdown();
 
 private:
-    void DoPolling(void *ptr);
+    void OnEventProcess(EventDetail *detail) override;
+    void OnTimeoutCheck(int64_t current_millseconds) override;
+
     void ProcessEpollEvents(void *ptr, uint32_t events);
     int AcceptEx(int fd, raptor_resolved_address *addr, int nonblock, int cloexec);
     void ProcessProperty(int fd, const Property &p);
@@ -50,13 +56,10 @@ private:
 private:
     AcceptorHandler *_handler;
     bool _shutdown;
-    int _number_of_thread;
-    int _running_threads;
 
-    Thread *_threads;
-    Epoll _epoll;
     list_entry _head;
     Mutex _mtex;
+    std::shared_ptr<PollingThread> _poll_thread;
 };
 
 }  // namespace raptor

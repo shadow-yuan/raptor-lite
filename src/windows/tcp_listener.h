@@ -19,21 +19,22 @@
 #ifndef __RAPTOR_CORE_WINDOWS_TCP_LISTENER__
 #define __RAPTOR_CORE_WINDOWS_TCP_LISTENER__
 
+#include <memory>
 #include <string>
 
-#include "src/windows/iocp.h"
-#include "src/common/sockaddr.h"
 #include "raptor-lite/utils/list_entry.h"
 #include "raptor-lite/utils/sync.h"
 #include "raptor-lite/utils/thread.h"
 #include "src/common/resolve_address.h"
+#include "src/common/sockaddr.h"
+#include "src/windows/iocp_thread.h"
 
 namespace raptor {
 class AcceptorHandler;
 struct ListenerObject;
 class Property;
 
-class TcpListener final {
+class TcpListener final : public internal::EventReceivingService {
 public:
     explicit TcpListener(AcceptorHandler *service);
     ~TcpListener();
@@ -44,7 +45,9 @@ public:
     void Shutdown();
 
 private:
-    void WorkThread(void *ptr);
+    void OnEventProcess(EventDetail *detail) override;
+    void OnTimeoutCheck(int64_t current_millseconds) override;
+
     raptor_error StartAcceptEx(struct ListenerObject *);
     void ParsingNewConnectionAddress(const ListenerObject *sp, raptor_resolved_address *remote);
 
@@ -53,16 +56,15 @@ private:
 
     AcceptorHandler *_service;
     bool _shutdown;
-    int _number_of_thread;
-    int _running_threads;
+
     LPFN_ACCEPTEX _AcceptEx;
     LPFN_GETACCEPTEXSOCKADDRS _GetAcceptExSockAddrs;
 
-    Thread *_threads;
     list_entry _head;
-    Iocp _iocp;
-    Mutex _mutex;  // for list_entry
     OVERLAPPED _exit;
+
+    Mutex _mutex;  // for list_entry
+    std::shared_ptr<PollingThread> _poll_thread;
 };
 
 }  // namespace raptor

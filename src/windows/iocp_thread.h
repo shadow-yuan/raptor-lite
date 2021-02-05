@@ -45,7 +45,7 @@ class PollingThread {
 public:
     explicit PollingThread(internal::EventReceivingService *service);
     ~PollingThread();
-    raptor_error Init(size_t rs_threads, size_t kernel_threads);
+    raptor_error Init(size_t rs_threads, size_t kernel_threads = 0);
     raptor_error Start();
     void Shutdown();
     bool Add(SOCKET sock, void *CompletionKey);

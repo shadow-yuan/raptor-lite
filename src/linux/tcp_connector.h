@@ -18,17 +18,18 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <memory>
 #include <set>
 
 #include "raptor-lite/impl/property.h"
 #include "raptor-lite/utils/thread.h"
 #include "raptor-lite/utils/sync.h"
 #include "src/common/resolve_address.h"
-#include "src/linux/epoll.h"
+#include "src/linux/epoll_thread.h"
 
 namespace raptor {
 class ConnectorHandler;
-class TcpConnector final {
+class TcpConnector final : public internal::EventReceivingService {
 public:
     explicit TcpConnector(ConnectorHandler *handler);
     ~TcpConnector();
@@ -39,20 +40,20 @@ public:
     raptor_error Connect(const std::string &addr);
 
 private:
-    void WorkThread(void *);
+    void OnEventProcess(EventDetail *detail) override;
+    void OnTimeoutCheck(int64_t current_millseconds) override;
     raptor_error AsyncConnect(const raptor_resolved_address *addr, int timeout_ms);
     void ProcessProperty(int fd, const Property &p);
 
 private:
     ConnectorHandler *_handler;
     bool _shutdown;
-    Thread *_threads;
-    int _number_of_thread;
+
     int _tcp_user_timeout_ms;
-    int _running_threads;
-    Epoll _epoll;
+
     Mutex _mtex;
     std::set<intptr_t> _records;
+    std::shared_ptr<PollingThread> _poll_thread;
 };
 
 }  // namespace raptor

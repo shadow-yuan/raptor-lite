@@ -44,7 +44,7 @@ class ContainerImpl : public Container,
                       public internal::EventReceivingService,
                       public internal::NotificationTransferService {
 public:
-    typedef struct {
+    typedef struct _Option {
         size_t mq_consumer_threads = 1;
         size_t recv_send_threads = 1;
         size_t default_container_size = 256;

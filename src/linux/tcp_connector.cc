@@ -32,45 +32,28 @@ struct async_connect_record_entry {
 TcpConnector::TcpConnector(ConnectorHandler *handler)
     : _handler(handler)
     , _shutdown(true)
-    , _threads(nullptr)
-    , _number_of_thread(0)
-    , _tcp_user_timeout_ms(0)
-    , _running_threads(0) {}
+    , _tcp_user_timeout_ms(0) {}
 
-TcpConnector::~TcpConnector() {}
+TcpConnector::~TcpConnector() {
+    Shutdown();
+}
 
 raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
     if (!_shutdown) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector is already running");
     }
 
-    raptor_error e = _epoll.create();
+    _poll_thread = std::make_shared<PollingThread>(this);
+    raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
         return e;
     }
+    _poll_thread->EnableTimeoutCheck(false);
 
-    _shutdown = false;
-    _number_of_thread = threads;
     _tcp_user_timeout_ms = tcp_user_timeout;
 
-    _threads = new Thread[threads];
+    _shutdown = false;
 
-    for (int i = 0; i < threads; i++) {
-        bool success = false;
-
-        _threads[i] = Thread("Linux:connector",
-                             std::bind(&TcpConnector::WorkThread, this, std::placeholders::_1),
-                             nullptr, &success);
-
-        if (!success) {
-            break;
-        }
-        _running_threads++;
-    }
-
-    if (_running_threads == 0) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector failed to create thread");
-    }
     return RAPTOR_ERROR_NONE;
 }
 
@@ -79,20 +62,13 @@ raptor_error TcpConnector::Start() {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector is not initialized");
     }
 
-    for (int i = 0; i < _running_threads; i++) {
-        _threads[i].Start();
-    }
-    return RAPTOR_ERROR_NONE;
+    return _poll_thread->Start();
 }
 
 void TcpConnector::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
-
-        for (int i = 0; i < _running_threads; i++) {
-            _threads[i].Join();
-        }
-        _epoll.shutdown();
+        _poll_thread->Shutdown();
 
         AutoMutex g(&_mtex);
         for (auto record : _records) {
@@ -144,52 +120,36 @@ raptor_error TcpConnector::AsyncConnect(const raptor_resolved_address *addr, int
     entry->fd = sock_fd;
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
-    _epoll.add(sock_fd, (void *)entry, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
+    _poll_thread->Add(sock_fd, (void *)entry, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
     return RAPTOR_ERROR_NONE;
 }
 
-void TcpConnector::WorkThread(void *) {
-    while (!_shutdown) {
+void TcpConnector::OnTimeoutCheck(int64_t) {}
+void TcpConnector::OnEventProcess(EventDetail *detail) {
+    struct async_connect_record_entry *entry =
+        reinterpret_cast<struct async_connect_record_entry *>(detail->ptr);
 
-        int number_of_fds = _epoll.polling();
-        if (_shutdown) {
-            return;
+    std::shared_ptr<EndpointImpl> endpoint =
+        std::make_shared<EndpointImpl>(entry->fd, &entry->addr);
+
+    _poll_thread->Delete(entry->fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
+
+    if (detail->event_type & internal::kSendEvent) {
+        Property property;
+        _handler->OnConnect(endpoint, property);
+        if (endpoint->IsOnline()) {
+            ProcessProperty(entry->fd, property);
         }
-
-        if (number_of_fds <= 0) {
-            continue;
-        }
-
-        for (int i = 0; i < number_of_fds; i++) {
-            struct epoll_event *ev = _epoll.get_event(i);
-
-            struct async_connect_record_entry *entry =
-                reinterpret_cast<struct async_connect_record_entry *>(ev->data.ptr);
-
-            std::shared_ptr<EndpointImpl> endpoint =
-                std::make_shared<EndpointImpl>(entry->fd, &entry->addr);
-
-            _epoll.remove(entry->fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
-
-            if (ev->events & EPOLLERR || ev->events & EPOLLHUP || ev->events & EPOLLRDHUP ||
-                ev->events & EPOLLIN) {
-                int error_code = raptor_get_socket_error(entry->fd);
-                raptor_error err = MakeRefCounted<Status>(error_code, "getsockopt(SO_ERROR)");
-                _handler->OnErrorOccurred(endpoint, err);
-                close(entry->fd);
-            } else if (ev->events & EPOLLOUT) {
-                Property property;
-                _handler->OnConnect(endpoint, property);
-                if (endpoint->IsOnline()) {
-                    ProcessProperty(entry->fd, property);
-                }
-            }
-
-            AutoMutex g(&_mtex);
-            _records.erase(reinterpret_cast<intptr_t>(entry));
-            delete entry;
-        }
+    } else {
+        int error_code = raptor_get_socket_error(entry->fd);
+        raptor_error err = MakeRefCounted<Status>(error_code, "getsockopt(SO_ERROR)");
+        _handler->OnErrorOccurred(endpoint, err);
+        close(entry->fd);
     }
+
+    AutoMutex g(&_mtex);
+    _records.erase(reinterpret_cast<intptr_t>(entry));
+    delete entry;
 }
 
 void TcpConnector::ProcessProperty(int fd, const Property &p) {

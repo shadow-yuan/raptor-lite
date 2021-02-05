@@ -18,7 +18,6 @@
 
 #include "src/windows/tcp_listener.h"
 #include <string.h>
-#include <memory>
 #include "raptor-lite/impl/acceptor.h"
 #include "raptor-lite/impl/endpoint.h"
 #include "raptor-lite/impl/property.h"
@@ -62,49 +61,28 @@ struct ListenerObject {
 TcpListener::TcpListener(AcceptorHandler *service)
     : _service(service)
     , _shutdown(true)
-    , _number_of_thread(0)
-    , _running_threads(0)
     , _AcceptEx(nullptr)
-    , _GetAcceptExSockAddrs(nullptr)
-    , _threads(nullptr) {
+    , _GetAcceptExSockAddrs(nullptr) {
     RAPTOR_LIST_INIT(&_head);
     memset(&_exit, 0, sizeof(_exit));
 }
 
 TcpListener::~TcpListener() {
-    if (!_shutdown) {
-        Shutdown();
-    }
+    Shutdown();
 }
 
 raptor_error TcpListener::Init(int threads) {
     if (!_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("TcpListener is already running");
 
-    auto e = _iocp.create(threads);
+    _poll_thread = std::make_shared<PollingThread>(this);
+    raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
         return e;
     }
+    _poll_thread->EnableTimeoutCheck(false);
 
     _shutdown = false;
-    _number_of_thread = threads;
-    _threads = new Thread[threads];
 
-    for (int i = 0; i < threads; i++) {
-        bool success = false;
-
-        _threads[i] =
-            Thread("Win32:listen", std::bind(&TcpListener::WorkThread, this, std::placeholders::_1),
-                   nullptr, &success);
-
-        if (!success) {
-            break;
-        }
-        _running_threads++;
-    }
-
-    if (_running_threads == 0) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("TcpListener failed to create thread");
-    }
     return RAPTOR_ERROR_NONE;
 }
 
@@ -113,19 +91,13 @@ raptor_error TcpListener::Start() {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpListener is not initialized");
     }
 
-    for (int i = 0; i < _running_threads; i++) {
-        _threads[i].Start();
-    }
-    return RAPTOR_ERROR_NONE;
+    return _poll_thread->Start();
 }
 
 void TcpListener::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
-        _iocp.post(NULL, &_exit);
-        for (int i = 0; i < _running_threads; i++) {
-            _threads[i].Join();
-        }
+        _poll_thread->Shutdown();
 
         AutoMutex g(&_mutex);
         list_entry *entry = _head.next;
@@ -135,9 +107,6 @@ void TcpListener::Shutdown() {
             delete obj;
         }
         RAPTOR_LIST_INIT(&_head);
-
-        delete[] _threads;
-        _threads = nullptr;
     }
 }
 
@@ -175,7 +144,7 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     node->port = port;
     node->mode = mode;
     node->addr = mapped_addr;
-    if (!_iocp.add(node->listen_fd, node.get())) {
+    if (!_poll_thread->Add(node->listen_fd, node.get())) {
         _mutex.Unlock();
         return RAPTOR_ERROR_FROM_STATIC_STRING("Failed to bind iocp");
     }
@@ -231,38 +200,28 @@ raptor_error TcpListener::GetExtensionFunction(SOCKET fd) {
     return RAPTOR_ERROR_NONE;
 }
 
-void TcpListener::WorkThread(void *) {
-    while (!_shutdown) {
-        DWORD NumberOfBytesTransferred = 0;
-        ListenerObject *CompletionKey = NULL;
-        LPOVERLAPPED lpOverlapped = NULL;
-        bool ret = _iocp.polling(&NumberOfBytesTransferred, (PULONG_PTR)&CompletionKey,
-                                 &lpOverlapped, INFINITE);
+void TcpListener::OnTimeoutCheck(int64_t) {}
 
-        if (!ret) {
-            continue;
-        }
+void TcpListener::OnEventProcess(EventDetail *detail) {
+    auto CompletionKey = reinterpret_cast<ListenerObject *>(detail->ptr);
 
-        if (lpOverlapped == &_exit) {  // shutdown
-            break;
-        }
+    raptor_resolved_address client;
+    memset(&client, 0, sizeof(client));
+    ParsingNewConnectionAddress(CompletionKey, &client);
 
-        raptor_resolved_address client;
-        memset(&client, 0, sizeof(client));
-        ParsingNewConnectionAddress(CompletionKey, &client);
+    auto ep = std::make_shared<EndpointImpl>(CompletionKey->new_socket, &client);
+    ep->SetListenPort(static_cast<uint16_t>(CompletionKey->port));
 
-        auto ep = std::make_shared<EndpointImpl>(CompletionKey->new_socket, &client);
-        ep->SetListenPort(static_cast<uint16_t>(CompletionKey->port));
-        Property property;
-        _service->OnAccept(ep, property);
-        ProcessProperty(CompletionKey->new_socket, property);
+    Property property;
+    _service->OnAccept(ep, property);
+    ProcessProperty(CompletionKey->new_socket, property);
 
-        CompletionKey->new_socket = INVALID_SOCKET;
-        raptor_error e = StartAcceptEx(CompletionKey);
-        if (e != RAPTOR_ERROR_NONE) {
-            log_error("TcpListener: AcceptEx next fd error: %s", e->ToString().c_str());
-            break;
-        }
+    CompletionKey->new_socket = INVALID_SOCKET;
+    raptor_error e = StartAcceptEx(CompletionKey);
+
+    if (e != RAPTOR_ERROR_NONE) {
+        log_error("TcpListener: AcceptEx next fd error: %s", e->ToString().c_str());
+        Shutdown();
     }
 }
 

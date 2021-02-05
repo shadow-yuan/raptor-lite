@@ -33,48 +33,31 @@ struct async_connect_record_entry {
 TcpConnector::TcpConnector(ConnectorHandler *handler)
     : _handler(handler)
     , _shutdown(true)
-    , _threads(nullptr)
     , _connectex(nullptr)
-    , _number_of_thread(0)
-    , _tcp_user_timeout_ms(0)
-    , _running_threads(0) {
+    , _tcp_user_timeout_ms(0) {
     memset(&_exit, 0, sizeof(_exit));
 }
 
-TcpConnector::~TcpConnector() {}
+TcpConnector::~TcpConnector() {
+    Shutdown();
+}
 
 raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
     if (!_shutdown) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector is already running");
     }
 
-    raptor_error e = _iocp.create(threads);
+    _poll_thread = std::make_shared<PollingThread>(this);
+    raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
         return e;
     }
+    _poll_thread->EnableTimeoutCheck(false);
 
-    _shutdown = false;
-    _number_of_thread = threads;
     _tcp_user_timeout_ms = tcp_user_timeout;
 
-    _threads = new Thread[threads];
+    _shutdown = false;
 
-    for (int i = 0; i < threads; i++) {
-        bool success = false;
-
-        _threads[i] = Thread("Win32:connector",
-                             std::bind(&TcpConnector::WorkThread, this, std::placeholders::_1),
-                             nullptr, &success);
-
-        if (!success) {
-            break;
-        }
-        _running_threads++;
-    }
-
-    if (_running_threads == 0) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector failed to create thread");
-    }
     return RAPTOR_ERROR_NONE;
 }
 
@@ -83,20 +66,13 @@ raptor_error TcpConnector::Start() {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector is not initialized");
     }
 
-    for (int i = 0; i < _running_threads; i++) {
-        _threads[i].Start();
-    }
-    return RAPTOR_ERROR_NONE;
+    return _poll_thread->Start();
 }
 
 void TcpConnector::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
-
-        for (int i = 0; i < _running_threads; i++) {
-            _threads[i].Join();
-        }
-        _iocp.shutdown();
+        _poll_thread->Shutdown();
 
         AutoMutex g(&_mtex);
         for (auto record : _records) {
@@ -124,42 +100,32 @@ raptor_error TcpConnector::Connect(const std::string &addr) {
     return e;
 }
 
-void TcpConnector::WorkThread(void *) {
-    while (!_shutdown) {
-        DWORD NumberOfBytesTransferred = 0;
-        struct async_connect_record_entry *CompletionKey = NULL;
-        LPOVERLAPPED lpOverlapped = NULL;
-        bool ret = _iocp.polling(&NumberOfBytesTransferred, (PULONG_PTR)&CompletionKey,
-                                 &lpOverlapped, 1000);
+void TcpConnector::OnTimeoutCheck(int64_t) {}
 
-        if (lpOverlapped == &_exit || _shutdown) {  // shutdown
-            break;
+void TcpConnector::OnEventProcess(EventDetail *detail) {
+
+    auto CompletionKey = reinterpret_cast<struct async_connect_record_entry *>(detail->ptr);
+
+    std::shared_ptr<EndpointImpl> endpoint =
+        std::make_shared<EndpointImpl>(CompletionKey->fd, &CompletionKey->addr);
+
+    if (detail->event_type & internal::kErrorEvent) {
+        // Maybe an error occurred or the connection was closed
+        raptor_error err = RAPTOR_WINDOWS_ERROR(detail->error_code, "IOCP_WAIT");
+        _handler->OnErrorOccurred(endpoint, err);
+    } else {
+        // update connect context
+        setsockopt(CompletionKey->fd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
+        Property property;
+        _handler->OnConnect(endpoint, property);
+        if (endpoint->IsOnline()) {
+            ProcessProperty(CompletionKey->fd, property);
         }
-
-        std::shared_ptr<EndpointImpl> endpoint =
-            std::make_shared<EndpointImpl>(CompletionKey->fd, &CompletionKey->addr);
-
-        if (!ret) {
-            int err_code = WSAGetLastError();
-            if (lpOverlapped != NULL && CompletionKey != NULL) {
-                // Maybe an error occurred or the connection was closed
-                raptor_error err = RAPTOR_WINDOWS_ERROR(err_code, "IOCP_WAIT");
-                _handler->OnErrorOccurred(endpoint, err);
-            }
-        } else {
-            // update connect context
-            setsockopt(CompletionKey->fd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
-            Property property;
-            _handler->OnConnect(endpoint, property);
-            if (endpoint->IsOnline()) {
-                ProcessProperty(CompletionKey->fd, property);
-            }
-        }
-
-        AutoMutex g(&_mtex);
-        _records.erase(reinterpret_cast<intptr_t>(CompletionKey));
-        delete CompletionKey;
     }
+
+    AutoMutex g(&_mtex);
+    _records.erase(reinterpret_cast<intptr_t>(CompletionKey));
+    delete CompletionKey;
 }
 
 void TcpConnector::ProcessProperty(SOCKET fd, const Property &p) {
@@ -257,7 +223,7 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr,
     _mtex.Lock();
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
-    _iocp.add(entry->fd, (void *)entry);
+    _poll_thread->Add(entry->fd, (void *)entry);
     _mtex.Unlock();
     return RAPTOR_ERROR_NONE;
 
