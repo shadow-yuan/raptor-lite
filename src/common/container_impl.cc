@@ -123,8 +123,8 @@ raptor_error ContainerImpl::Init() {
 
 raptor_error ContainerImpl::Start() {
     raptor_error err = _poll_thread->Start();
-    if (err == RAPTOR_ERROR_NONE) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("ContainerImpl: failed to start epoll thread");
+    if (err != RAPTOR_ERROR_NONE) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("ContainerImpl: Failed to start poll thread");
     }
 
     for (int i = 0; i < _running_threads; i++) {

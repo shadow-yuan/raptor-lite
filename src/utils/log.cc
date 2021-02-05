@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "raptor-lite/utils/atomic.h"
 #include "raptor-lite/utils/time.h"
 
