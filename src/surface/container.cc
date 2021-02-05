@@ -94,6 +94,8 @@ raptor_error CreateContainer(const Property &p, Container **out) {
     *out = nullptr;
 
     ContainerImpl::Option option;
+    option.msg_handler = message_handler;
+
     option.proto_handler =
         reinterpret_cast<ProtocolHandler *>(p.GetValue<intptr_t>("ProtocolHandler", 0));
 

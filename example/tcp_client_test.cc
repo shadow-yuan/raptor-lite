@@ -20,7 +20,16 @@ public:
     }
 
     void OnErrorOccurred(const raptor::Endpoint &ep, raptor_error desc) {
-        std::cout << "OnErrorOccurred:\n  desc: " << desc->ToString() << std::endl;
+        std::cout << "OnErrorOccurred:\n  "
+                  << "fd: " << ep.SocketFd() << "\n  desc: " << desc->ToString() << std::endl;
+    }
+
+    void init() {
+        raptor::Property p{{"ConnectorHandler", static_cast<ConnectorHandler *>(this)}};
+        raptor_error err = raptor::CreateConnector(p, &cc);
+        if (err != RAPTOR_ERROR_NONE) {
+            std::cout << "CreateConnector: " << err->ToString() << std::endl;
+        }
     }
 
     void start_and_connecting(const std::string &addr) {
@@ -44,23 +53,20 @@ private:
     raptor::Connector *cc = nullptr;
 };
 
-ClientHandler ::ClientHandler(/* args */) {
-    raptor::Property p{{"ConnectorHandler", this}};
-    raptor_error err = raptor::CreateConnector(p, &cc);
-    if (err != RAPTOR_ERROR_NONE) {
-        std::cout << "CreateConnector: " << err->ToString() << std::endl;
-    }
-}
+ClientHandler ::ClientHandler(/* args */) {}
 
 ClientHandler ::~ClientHandler() {
     raptor::DestoryConnector(cc);
 }
 
-int main(int argc, char *argv[]) {
+int main() {
+    RaptorGlobalStartup();
     std::cout << " ---- prepare start client ---- " << std::endl;
     ClientHandler client;
+    client.init();
     client.start_and_connecting("localhost:50051");
     getchar();
     client.stop();
+    RaptorGlobalCleanup();
     return 0;
 }

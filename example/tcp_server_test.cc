@@ -65,6 +65,24 @@ public:
                   << "    type: " << event.Type() << "    What: " << event.What() << std::endl;
     }
 
+    void init() {
+        raptor::Property p{{"AcceptorHandler", static_cast<AcceptorHandler *>(this)},
+                           {"MessageHandler", static_cast<MessageHandler *>(this)},
+                           {"HeartbeatHandler", static_cast<HeartbeatHandler *>(this)},
+                           {"EndpointClosedHandler", static_cast<EndpointClosedHandler *>(this)}};
+
+        raptor_error err = raptor::CreateContainer(p, &container);
+        if (err != RAPTOR_ERROR_NONE) {
+            std::cout << "Failed to create container: " << err->ToString() << std::endl;
+            abort();
+        }
+        err = raptor::CreateAcceptor(p, &acceptor);
+        if (err != RAPTOR_ERROR_NONE) {
+            std::cout << "Failed to create acceptor: " << err->ToString() << std::endl;
+            abort();
+        }
+    }
+
     void start_and_listening(const std::string &addr) {
         raptor_error err = acceptor->Start();
         if (err != RAPTOR_ERROR_NONE) {
@@ -78,7 +96,7 @@ public:
         }
         err = acceptor->AddListening(addr);
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to Connect: " << err->ToString() << std::endl;
+            std::cout << "Failed to Listening: " << err->ToString() << std::endl;
             return;
         }
     }
@@ -94,21 +112,8 @@ private:
 };
 
 TcpServerTest::TcpServerTest(/* args */) {
-    raptor::Property p{{"AcceptorHandler", this},
-                       {"MessageHandler", this},
-                       {"HeartbeatHandler", this},
-                       {"EndpointClosedHandler", this}};
-
-    raptor_error err = raptor::CreateContainer(p, &container);
-    if (err != RAPTOR_ERROR_NONE) {
-        std::cout << "Failed to create container: " << err->ToString() << std::endl;
-        abort();
-    }
-    err = raptor::CreateAcceptor(p, &acceptor);
-    if (err != RAPTOR_ERROR_NONE) {
-        std::cout << "Failed to create acceptor: " << err->ToString() << std::endl;
-        abort();
-    }
+    // don't call raptor function, because TcpServerTest(depend: each handler) not construction
+    // completed.
 }
 
 TcpServerTest::~TcpServerTest() {
@@ -116,11 +121,14 @@ TcpServerTest::~TcpServerTest() {
     raptor::DestoryContainer(container);
 }
 
-int main(int argc, char *argv[]) {
+int main() {
+    RaptorGlobalStartup();
     std::cout << " ---- prepare start server ---- " << std::endl;
     TcpServerTest server;
+    server.init();
     server.start_and_listening("localhost:50051");
     getchar();
     server.stop();
+    RaptorGlobalCleanup();
     return 0;
 }
