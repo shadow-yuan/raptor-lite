@@ -208,14 +208,14 @@ void TcpConnector::ProcessProperty(int fd, const Property &p) {
         raptor_set_socket_low_latency(fd, 1);
     }
 
-    int SocketSendTimeout = 0;
-    if (p.CheckValue<int>("SocketSendTimeout", SocketSendTimeout) && SocketSendTimeout > 0) {
-        raptor_set_socket_snd_timeout(fd, SocketSendTimeout);
+    int SocketSendTimeoutMs = 0;
+    if (p.CheckValue<int>("SocketSendTimeoutMs", SocketSendTimeoutMs) && SocketSendTimeoutMs > 0) {
+        raptor_set_socket_snd_timeout(fd, SocketSendTimeoutMs);
     }
 
-    int SocketRecvTimeout = 0;
-    if (p.CheckValue<int>("SocketRecvTimeout", SocketRecvTimeout) && SocketRecvTimeout > 0) {
-        raptor_set_socket_rcv_timeout(fd, SocketRecvTimeout);
+    int SocketRecvTimeoutMs = 0;
+    if (p.CheckValue<int>("SocketRecvTimeoutMs", SocketRecvTimeoutMs) && SocketRecvTimeoutMs > 0) {
+        raptor_set_socket_rcv_timeout(fd, SocketRecvTimeoutMs);
     }
 }
 }  // namespace raptor

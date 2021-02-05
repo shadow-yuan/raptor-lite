@@ -23,31 +23,34 @@
 #include <stdint.h>
 #include <memory>
 
+#include "raptor-lite/utils/atomic.h"
 #include "raptor-lite/impl/event.h"
 #include "raptor-lite/utils/slice_buffer.h"
+#include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/sync.h"
-#include "raptor-lite/utils/atomic.h"
 
-#include "src/windows/iocp.h"
+#include "src/windows/iocp_thread.h"
 
 namespace raptor {
 
 class EndpointImpl;
+class PollingThread;
 class ProtocolHandler;
 
 namespace internal {
-class INotificationTransfer;
+class NotificationTransferService;
 }  // namespace internal
 
 class Connection final {
     friend class TcpContainer;
+    friend class ContainerImpl;
 
 public:
     explicit Connection(std::shared_ptr<EndpointImpl> obj);
     ~Connection();
 
     // Before Init, sock must be associated with iocp
-    bool Init(internal::INotificationTransfer *service);
+    bool Init(internal::NotificationTransferService *service, PollingThread *t);
     void SetProtocol(ProtocolHandler *p);
     void Shutdown(bool notify, const Event &ev = Event());
 
@@ -59,8 +62,11 @@ public:
 
 private:
     // IOCP Event
-    bool OnSendEvent(size_t size, uint32_t handle_id);
+    raptor_error DoRecvEvent(EventDetail *);
+    raptor_error DoSendEvent(EventDetail *);
+
     bool OnRecvEvent(size_t size, uint32_t handle_id);
+    bool OnSendEvent(size_t size, uint32_t handle_id);
 
     // if success return the number of parsed packets
     // otherwise return -1 (protocol error)
@@ -77,7 +83,7 @@ private:
     }
 
 private:
-    internal::INotificationTransfer *_service;
+    internal::NotificationTransferService *_service;
     ProtocolHandler *_proto;
 
     bool _send_pending;

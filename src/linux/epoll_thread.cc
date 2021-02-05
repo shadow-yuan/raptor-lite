@@ -21,18 +21,18 @@
 #include "src/common/service.h"
 
 namespace raptor {
-EpollThread::EpollThread(internal::IEpollReceiver *rcv)
+PollingThread::PollingThread(internal::EventReceivingService *rcv)
     : _receiver(rcv)
     , _shutdown(true)
     , _enable_timeout_check(false)
     , _number_of_threads(0)
     , _running_threads(0) {}
 
-EpollThread::~EpollThread() {
+PollingThread::~PollingThread() {
     Shutdown();
 }
 
-RefCountedPtr<Status> EpollThread::Init(int threads) {
+RefCountedPtr<Status> PollingThread::Init(int threads, int) {
     if (!_shutdown) {
         return RAPTOR_ERROR_NONE;
     }
@@ -50,7 +50,7 @@ RefCountedPtr<Status> EpollThread::Init(int threads) {
         bool success = false;
 
         _threads[i] =
-            Thread("epoll:thread", std::bind(&EpollThread::DoWork, this, std::placeholders::_1),
+            Thread("epoll:thread", std::bind(&PollingThread::DoWork, this, std::placeholders::_1),
                    nullptr, &success);
 
         if (!success) {
@@ -61,14 +61,14 @@ RefCountedPtr<Status> EpollThread::Init(int threads) {
     }
 
     if (_running_threads == 0) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("EpollThread failed to create thread");
+        return RAPTOR_ERROR_FROM_STATIC_STRING("PollingThread failed to create thread");
     }
     return RAPTOR_ERROR_NONE;
 }
 
-raptor_error EpollThread::Start() {
+raptor_error PollingThread::Start() {
     if (_shutdown) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("EpollThread is not initialized");
+        return RAPTOR_ERROR_FROM_STATIC_STRING("PollingThread is not initialized");
     }
 
     for (int i = 0; i < _running_threads; i++) {
@@ -77,7 +77,7 @@ raptor_error EpollThread::Start() {
     return RAPTOR_ERROR_NONE;
 }
 
-void EpollThread::Shutdown() {
+void PollingThread::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
 
@@ -89,11 +89,11 @@ void EpollThread::Shutdown() {
     }
 }
 
-void EpollThread::EnableTimeoutCheck(bool b) {
+void PollingThread::EnableTimeoutCheck(bool b) {
     _enable_timeout_check = b;
 }
 
-void EpollThread::DoWork(void *ptr) {
+void PollingThread::DoWork(void *ptr) {
     while (!_shutdown) {
 
         if (_enable_timeout_check) {
@@ -112,29 +112,37 @@ void EpollThread::DoWork(void *ptr) {
         for (int i = 0; i < number_of_fd; i++) {
             struct epoll_event *ev = _epoll.get_event(i);
 
+            EventDetail detail;
+            detail.ptr = ev->data.ptr;
+            detail.error_code = 0;
+            detail.event_type = 0;
+
             if (ev->events & EPOLLERR || ev->events & EPOLLHUP || ev->events & EPOLLRDHUP) {
-                _receiver->OnErrorEvent(ev->data.ptr);
+                detail.event_type |= internal::kErrorEvent;
+                detail.error_code = errno;
+                _receiver->OnEventProcess(&detail);
                 continue;
             }
             if (ev->events & EPOLLIN) {
-                _receiver->OnRecvEvent(ev->data.ptr);
+                detail.event_type |= internal::kRecvEvent;
             }
             if (ev->events & EPOLLOUT) {
-                _receiver->OnSendEvent(ev->data.ptr);
+                detail.event_type |= internal::kSendEvent;
             }
+            _receiver->OnEventProcess(&detail);
         }
     }
 }
 
-int EpollThread::Add(int fd, void *data, uint32_t events) {
+int PollingThread::Add(int fd, void *data, uint32_t events) {
     return _epoll.add(fd, data, events | EPOLLRDHUP);
 }
 
-int EpollThread::Modify(int fd, void *data, uint32_t events) {
+int PollingThread::Modify(int fd, void *data, uint32_t events) {
     return _epoll.modify(fd, data, events | EPOLLRDHUP);
 }
 
-int EpollThread::Delete(int fd, uint32_t events) {
+int PollingThread::Delete(int fd, uint32_t events) {
     return _epoll.remove(fd, events | EPOLLRDHUP);
 }
 

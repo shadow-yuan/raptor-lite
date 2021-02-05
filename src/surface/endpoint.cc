@@ -28,22 +28,22 @@ void Endpoint::BindWithContainer(Container *container) {
     _impl->BindWithContainer(container);
 }
 
-bool Endpoint::SendMsg(const Slice &slice) {
+bool Endpoint::SendMsg(const Slice &slice) const {
     if (slice.Empty()) return false;
     return _impl->SendMsg(slice);
 }
 
-bool Endpoint::SendMsg(const void *data, size_t len) {
+bool Endpoint::SendMsg(const void *data, size_t len) const {
     if (!data || len == 0) return false;
     return _impl->SendMsg(data, len);
 }
 
-int Endpoint::SyncSend(const void *data, size_t len) {
+int Endpoint::SyncSend(const void *data, size_t len) const {
     if (!data || len == 0) return 0;
     return _impl->SyncSend(data, len);
 }
 
-int Endpoint::SyncRecv(void *data, size_t len) {
+int Endpoint::SyncRecv(void *data, size_t len) const {
     if (!data || len == 0) return 0;
     return _impl->SyncRecv(data, len);
 }

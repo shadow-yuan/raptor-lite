@@ -33,18 +33,16 @@
 #include "raptor-lite/impl/container.h"
 
 #include "src/common/service.h"
-#include "src/linux/epoll_thread.h"
-#include "src/linux/connection.h"
 #include "src/utils/timer.h"
 
 namespace raptor {
-class IProtocol;
-class TcpListener;
+class Connection;
+class PollingThread;
 struct TcpMessageNode;
-class TcpContainer : public Container,
-                     public TimerHandler,
-                     public internal::IEpollReceiver,
-                     public internal::INotificationTransfer {
+class ContainerImpl : public Container,
+                      public TimerHandler,
+                      public internal::EventReceivingService,
+                      public internal::NotificationTransferService {
 public:
     typedef struct {
         size_t mq_consumer_threads = 1;
@@ -59,8 +57,8 @@ public:
         EndpointClosedHandler *closed_handler = nullptr;
     } Option;
 
-    explicit TcpContainer(TcpContainer::Option *option);
-    ~TcpContainer();
+    explicit ContainerImpl(ContainerImpl::Option *option);
+    ~ContainerImpl();
 
     raptor_error Init();
     raptor_error Start() override;
@@ -69,13 +67,11 @@ public:
     bool SendMsg(const Endpoint &ep, const void *data, size_t len) override;
     void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
-    // internal::IEpollReceiver implement
-    void OnErrorEvent(void *ptr) override;
-    void OnRecvEvent(void *ptr) override;
-    void OnSendEvent(void *ptr) override;
+    // internal::EventReceivingService implement
+    void OnEventProcess(EventDetail *detail) override;
     void OnTimeoutCheck(int64_t current_millseconds) override;
 
-    // internal::INotificationTransfer impl
+    // internal::NotificationTransferService impl
     void OnDataReceived(const Endpoint &ep, const Slice &s) override;
     void OnClosed(const Endpoint &ep, const Event &event) override;
 
@@ -89,12 +85,16 @@ private:
     void OnTimerEvent(const Endpoint &ep);
     void OnTimer(uint32_t tid1, uint32_t tid2) override;
 
+    void OnErrorEvent(uint32_t index, EventDetail *ptr);
+    void OnRecvEvent(uint32_t index, EventDetail *ptr);
+    void OnSendEvent(uint32_t index, EventDetail *ptr);
+
 private:
     using TimeoutRecordMap = std::multimap<int64_t, uint32_t>;
     using ConnectionInfo = std::pair<std::shared_ptr<Connection>, TimeoutRecordMap::iterator>;
 
     bool _shutdown;
-    TcpContainer::Option _option;
+    ContainerImpl::Option _option;
 
     MultiProducerSingleConsumerQueue _mpscq;
     Thread *_mq_threads;
@@ -103,7 +103,7 @@ private:
     AtomicUInt32 _count;
     int _running_threads;
 
-    std::shared_ptr<EpollThread> _epoll_thread;
+    std::shared_ptr<PollingThread> _poll_thread;
     std::shared_ptr<Timer> _timer_thread;
 
     Mutex _conn_mtx;

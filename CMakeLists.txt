@@ -57,9 +57,7 @@ if (WIN32)
         "${PROJECT_SOURCE_DIR}/src/windows/iocp.cc"
         "${PROJECT_SOURCE_DIR}/src/windows/socket_setting.cc"
         "${PROJECT_SOURCE_DIR}/src/windows/tcp_connector.cc"
-        "${PROJECT_SOURCE_DIR}/src/windows/tcp_container.cc"
         "${PROJECT_SOURCE_DIR}/src/windows/tcp_listener.cc"
-        #"${PROJECT_SOURCE_DIR}/src/windows/tcp_server.cc"
     )
 else()
     set(
@@ -70,14 +68,13 @@ else()
         "${PROJECT_SOURCE_DIR}/src/linux/epoll.cc"
         "${PROJECT_SOURCE_DIR}/src/linux/socket_setting.cc"
         "${PROJECT_SOURCE_DIR}/src/linux/tcp_connector.cc"
-        "${PROJECT_SOURCE_DIR}/src/linux/tcp_container.cc"
         "${PROJECT_SOURCE_DIR}/src/linux/tcp_listener.cc"
-        #"${PROJECT_SOURCE_DIR}/src/linux/tcp_server.cc"
     )
 endif()
 
 set(
     RAPTOR_COMMON_SOURCE
+    "${PROJECT_SOURCE_DIR}/src/common/container_impl.cc"
     "${PROJECT_SOURCE_DIR}/src/common/endpoint_impl.cc"
     "${PROJECT_SOURCE_DIR}/src/common/host_port.cc"
     "${PROJECT_SOURCE_DIR}/src/common/resolve_address.cc"

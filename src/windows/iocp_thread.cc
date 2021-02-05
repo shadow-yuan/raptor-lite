@@ -22,7 +22,7 @@
 #include "raptor-lite/utils/time.h"
 
 namespace raptor {
-IocpThread::IocpThread(internal::IIocpReceiver *service)
+PollingThread::PollingThread(internal::EventReceivingService *service)
     : _service(service)
     , _shutdown(true)
     , _enable_timeout_check(false)
@@ -32,13 +32,13 @@ IocpThread::IocpThread(internal::IIocpReceiver *service)
     memset(&_exit, 0, sizeof(_exit));
 }
 
-IocpThread::~IocpThread() {
+PollingThread::~PollingThread() {
     if (!_shutdown) {
         Shutdown();
     }
 }
 
-RefCountedPtr<Status> IocpThread::Init(size_t rs_threads, size_t kernel_threads) {
+RefCountedPtr<Status> PollingThread::Init(size_t rs_threads, size_t kernel_threads) {
     if (!_shutdown) return RAPTOR_ERROR_NONE;
 
     auto e = _iocp.create(static_cast<DWORD>(kernel_threads));
@@ -53,23 +53,23 @@ RefCountedPtr<Status> IocpThread::Init(size_t rs_threads, size_t kernel_threads)
 
     for (size_t i = 0; i < _number_of_threads; i++) {
         bool success = false;
-        _threads[i] =
-            Thread("iocp:thread", std::bind(&IocpThread::WorkThread, this, std::placeholders::_1),
-                   nullptr, &success);
+        _threads[i] = Thread("iocp:thread",
+                             std::bind(&PollingThread::WorkThread, this, std::placeholders::_1),
+                             nullptr, &success);
         if (!success) {
             break;
         }
         _running_threads++;
     }
     if (_running_threads == 0) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("IocpThread: Failed to create thread");
+        return RAPTOR_ERROR_FROM_STATIC_STRING("PollingThread: Failed to create thread");
     }
     return RAPTOR_ERROR_NONE;
 }
 
-raptor_error IocpThread::Start() {
+raptor_error PollingThread::Start() {
     if (_shutdown) {
-        return RAPTOR_ERROR_FROM_STATIC_STRING("IocpThread is not initialized");
+        return RAPTOR_ERROR_FROM_STATIC_STRING("PollingThread is not initialized");
     }
     for (size_t i = 0; i < _running_threads; i++) {
         _threads[i].Start();
@@ -77,7 +77,7 @@ raptor_error IocpThread::Start() {
     return RAPTOR_ERROR_NONE;
 }
 
-void IocpThread::Shutdown() {
+void PollingThread::Shutdown() {
     if (!_shutdown) {
         _shutdown = true;
         _iocp.post(NULL, &_exit);
@@ -89,15 +89,15 @@ void IocpThread::Shutdown() {
     }
 }
 
-bool IocpThread::Add(SOCKET sock, void *CompletionKey) {
+bool PollingThread::Add(SOCKET sock, void *CompletionKey) {
     return _iocp.add(sock, CompletionKey);
 }
 
-void IocpThread::EnableTimeoutCheck(bool b) {
+void PollingThread::EnableTimeoutCheck(bool b) {
     _enable_timeout_check = b;
 }
 
-void IocpThread::WorkThread(void *) {
+void PollingThread::WorkThread(void *) {
     while (!_shutdown) {
 
         if (_enable_timeout_check) {
@@ -112,6 +112,18 @@ void IocpThread::WorkThread(void *) {
         // https://docs.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-getqueuedcompletionstatus
         bool ret = _iocp.polling(&NumberOfBytesTransferred, (PULONG_PTR)&CompletionKey,
                                  &lpOverlapped, 1000);
+
+        // shutdown signal
+        if (lpOverlapped == &_exit) {
+            break;
+        }
+
+        EventDetail detail;
+        detail.error_code = 0;
+        detail.event_type = 0;
+        detail.ptr = CompletionKey;
+        detail.transferred_bytes = NumberOfBytesTransferred;
+        detail.handle_id = 0;
 
         if (!ret) {
 
@@ -137,24 +149,17 @@ void IocpThread::WorkThread(void *) {
 
             if (lpOverlapped != NULL && CompletionKey != NULL) {
                 // Maybe an error occurred or the connection was closed
-                DWORD err_code = GetLastError();
-                _service->OnErrorEvent(CompletionKey, static_cast<size_t>(err_code));
+                detail.event_type = internal::kErrorEvent;
+                detail.error_code = WSAGetLastError();
+                _service->OnEventProcess(&detail);
             }
             continue;
         }
 
-        // shutdown signal
-        if (lpOverlapped == &_exit) {
-            break;
-        }
-
-        OverLappedEx *ptr = (OverLappedEx *)lpOverlapped;
-        if (ptr->event == IocpEventType::kRecvEvent) {
-            _service->OnRecvEvent(CompletionKey, NumberOfBytesTransferred, ptr->HandleId);
-        }
-        if (ptr->event == IocpEventType::kSendEvent) {
-            _service->OnSendEvent(CompletionKey, NumberOfBytesTransferred, ptr->HandleId);
-        }
+        OverLappedEx *olex = (OverLappedEx *)lpOverlapped;
+        detail.event_type = olex->event_type;
+        detail.handle_id = olex->HandleId;
+        _service->OnEventProcess(&detail);
     }
 }
 

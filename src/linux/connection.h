@@ -23,28 +23,32 @@
 #include <memory>
 
 #include "raptor-lite/impl/event.h"
+
 #include "raptor-lite/utils/atomic.h"
 #include "raptor-lite/utils/slice_buffer.h"
+#include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/sync.h"
 
 namespace raptor {
 
-class EpollThread;
 class EndpointImpl;
+class PollingThread;
 class ProtocolHandler;
+struct EventDetail;
 
 namespace internal {
-class INotificationTransfer;
+class NotificationTransferService;
 }  // namespace internal
 
 class Connection final {
     friend class TcpContainer;
+    friend class ContainerImpl;
 
 public:
     explicit Connection(std::shared_ptr<EndpointImpl> obj);
     ~Connection();
 
-    void Init(internal::INotificationTransfer *service, EpollThread *t);
+    void Init(internal::NotificationTransferService *service, PollingThread *t);
     void SetProtocol(ProtocolHandler *p);
     bool SendMsg(const void *data, size_t data_len);
     void Shutdown(bool notify, const Event &ev = Event());
@@ -57,8 +61,8 @@ private:
     int OnRecv();
     int OnSend();
 
-    bool DoRecvEvent();
-    bool DoSendEvent();
+    raptor_error DoRecvEvent(EventDetail *);
+    raptor_error DoSendEvent(EventDetail *);
 
     // if success return the number of parsed packets
     // otherwise return -1 (protocol error)
@@ -72,9 +76,9 @@ private:
     }
 
 private:
-    internal::INotificationTransfer *_service;
+    internal::NotificationTransferService *_service;
     ProtocolHandler *_proto;
-    EpollThread *_epoll_thread;
+    PollingThread *_epoll_thread;
 
     SliceBuffer _rcv_buffer;
     SliceBuffer _snd_buffer;

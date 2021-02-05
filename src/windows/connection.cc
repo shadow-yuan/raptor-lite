@@ -42,8 +42,8 @@ Connection::Connection(std::shared_ptr<EndpointImpl> obj)
 
     memset(&_send_overlapped.overlapped, 0, sizeof(_send_overlapped.overlapped));
     memset(&_recv_overlapped.overlapped, 0, sizeof(_recv_overlapped.overlapped));
-    _send_overlapped.event = IocpEventType::kSendEvent;
-    _recv_overlapped.event = IocpEventType::kRecvEvent;
+    _send_overlapped.event_type = internal::kSendEvent;
+    _recv_overlapped.event_type = internal::kRecvEvent;
 
     _endpoint = obj;
 
@@ -55,9 +55,11 @@ Connection::Connection(std::shared_ptr<EndpointImpl> obj)
 
 Connection::~Connection() {}
 
-bool Connection::Init(internal::INotificationTransfer *service) {
+bool Connection::Init(internal::NotificationTransferService *service, PollingThread *iocp_thread) {
     _service = service;
     _send_pending = false;
+    iocp_thread->Add(static_cast<SOCKET>(_endpoint->_fd),
+                     reinterpret_cast<void *>(_endpoint->_connection_id));
     return AsyncRecv();
 }
 
@@ -162,6 +164,26 @@ bool Connection::AsyncRecv() {
 
 bool Connection::IsOnline() {
     return (_endpoint->IsOnline());
+}
+
+raptor_error Connection::DoRecvEvent(EventDetail *detail) {
+    uint32_t size = detail->transferred_bytes;
+    uint32_t handle_id = detail->handle_id;
+    if (OnSendEvent(size, handle_id)) {
+        return RAPTOR_ERROR_NONE;
+    }
+
+    return RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "Connection:OnSendEvent");
+}
+
+raptor_error Connection::DoSendEvent(EventDetail *detail) {
+    uint32_t size = detail->transferred_bytes;
+    uint32_t handle_id = detail->handle_id;
+    if (OnRecvEvent(size, handle_id)) {
+        return RAPTOR_ERROR_NONE;
+    }
+
+    return RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "Connection:OnRecvEvent");
 }
 
 // IOCP Event

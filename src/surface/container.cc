@@ -18,20 +18,17 @@
 
 #include "raptor-lite/impl/container.h"
 #include <memory>
-#ifdef _WIN32
-#include "src/windows/tcp_container.h"
-#else
-#include "src/linux/tcp_container.h"
-#endif
+
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/impl/handler.h"
 #include "raptor-lite/impl/property.h"
+#include "src/common/container_impl.h"
 
 namespace raptor {
 class ContainerAdaptor : public Container {
 
 public:
-    explicit ContainerAdaptor(TcpContainer::Option *option);
+    explicit ContainerAdaptor(ContainerImpl::Option *option);
     ~ContainerAdaptor();
 
     raptor_error Init();
@@ -42,11 +39,11 @@ public:
     void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
 private:
-    std::shared_ptr<TcpContainer> _impl;
+    std::shared_ptr<ContainerImpl> _impl;
 };
 
-ContainerAdaptor::ContainerAdaptor(TcpContainer::Option *option)
-    : _impl(std::make_shared<TcpContainer>(option)) {}
+ContainerAdaptor::ContainerAdaptor(ContainerImpl::Option *option)
+    : _impl(std::make_shared<ContainerImpl>(option)) {}
 
 ContainerAdaptor::~ContainerAdaptor() {}
 
@@ -96,7 +93,7 @@ raptor_error CreateContainer(const Property &p, Container **out) {
 
     *out = nullptr;
 
-    TcpContainer::Option option;
+    ContainerImpl::Option option;
     option.proto_handler =
         reinterpret_cast<ProtocolHandler *>(p.GetValue<intptr_t>("ProtocolHandler", 0));
 
@@ -109,7 +106,7 @@ raptor_error CreateContainer(const Property &p, Container **out) {
     option.recv_send_threads = p.GetValue("RecvSendThreads", 1);
     option.default_container_size = p.GetValue("DefaultContainerSize", 256);
     option.max_container_size = p.GetValue("MaxContainerSize", 1048576);
-    option.not_check_connection_timeout = p.GetValue<bool>("NotCheckConnectionTimeout", true);
+    option.not_check_connection_timeout = p.GetValue<bool>("NotCheckConnectionTimeout", false);
     option.connection_timeoutms = p.GetValue("ConnectionTimeoutMs", 60000);
     option.mq_consumer_threads = p.GetValue("MQConsumerThreads", 1);
 

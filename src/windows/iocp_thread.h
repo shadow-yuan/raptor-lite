@@ -27,10 +27,24 @@
 #include "raptor-lite/utils/thread.h"
 
 namespace raptor {
-class IocpThread {
+typedef struct {
+    OVERLAPPED overlapped;
+    int event_type;
+    uint32_t HandleId;
+} OverLappedEx;
+
+struct EventDetail {
+    void *ptr;
+    int event_type;
+    int error_code;
+    uint32_t transferred_bytes;
+    uint32_t handle_id;
+};
+
+class PollingThread {
 public:
-    explicit IocpThread(internal::IIocpReceiver *service);
-    ~IocpThread();
+    explicit PollingThread(internal::EventReceivingService *service);
+    ~PollingThread();
     raptor_error Init(size_t rs_threads, size_t kernel_threads);
     raptor_error Start();
     void Shutdown();
@@ -40,7 +54,7 @@ public:
 private:
     void WorkThread(void *);
 
-    internal::IIocpReceiver *_service;
+    internal::EventReceivingService *_service;
     bool _shutdown;
     bool _enable_timeout_check;
     size_t _number_of_threads;

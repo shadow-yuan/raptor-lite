@@ -26,12 +26,18 @@
 #include "src/common/service.h"
 
 namespace raptor {
-class EpollThread final {
-public:
-    explicit EpollThread(internal::IEpollReceiver *rcv);
-    ~EpollThread();
+struct EventDetail {
+    void *ptr;
+    int event_type;
+    int error_code;
+};
 
-    raptor_error Init(int threads = 1);
+class PollingThread final {
+public:
+    explicit PollingThread(internal::EventReceivingService *rcv);
+    ~PollingThread();
+
+    raptor_error Init(int threads = 1, int useless = 0);
     raptor_error Start();
     void Shutdown();
     void EnableTimeoutCheck(bool b);
@@ -42,7 +48,7 @@ public:
 
 private:
     void DoWork(void *ptr);
-    internal::IEpollReceiver *_receiver;
+    internal::EventReceivingService *_receiver;
     bool _shutdown;
     bool _enable_timeout_check;
     int _number_of_threads;

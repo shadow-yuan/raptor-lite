@@ -25,14 +25,6 @@
 
 namespace raptor {
 
-enum class IocpEventType { kAcceptEvent, kSendEvent, kRecvEvent };
-
-typedef struct {
-    OVERLAPPED overlapped;
-    IocpEventType event;
-    uint32_t HandleId;
-} OverLappedEx;
-
 class Iocp final {
 public:
     Iocp();

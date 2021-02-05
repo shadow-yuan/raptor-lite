@@ -23,9 +23,25 @@
 #include <raptor-lite/impl/connector.h>
 #include <raptor-lite/impl/container.h>
 #include <raptor-lite/impl/endpoint.h>
+#include <raptor-lite/impl/event.h>
 #include <raptor-lite/impl/handler.h>
 #include <raptor-lite/impl/property.h>
 #include <raptor-lite/impl/server.h>
+
+#include <raptor-lite/utils/atomic.h>
+#include <raptor-lite/utils/cpu.h>
+#include <raptor-lite/utils/list_entry.h>
+#include <raptor-lite/utils/log.h>
+#include <raptor-lite/utils/mpscq.h>
+#include <raptor-lite/utils/ref_counted_ptr.h>
+#include <raptor-lite/utils/ref_counted.h>
+#include <raptor-lite/utils/slice_buffer.h>
+#include <raptor-lite/utils/slice.h>
+#include <raptor-lite/utils/status.h>
+#include <raptor-lite/utils/sync.h>
+#include <raptor-lite/utils/thread.h>
+#include <raptor-lite/utils/time.h>
+#include <raptor-lite/utils/useful.h>
 
 int RaptorGlobalStartup();
 int RaptorGlobalCleanup();

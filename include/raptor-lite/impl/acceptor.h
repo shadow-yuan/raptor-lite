@@ -36,8 +36,8 @@ public:
      * socket property:
      *   1. SocketNoSIGPIPE     (bool, default: true)
      *   2. SocketReuseAddress  (bool, default: true)
-     *   3. SocketRecvTimeout   (int)
-     *   4. SocketSendTimeout   (int)
+     *   3. SocketRecvTimeoutMs (int)
+     *   4. SocketSendTimeoutMs (int)
      *   5. SocketLowLatency    (bool, default: true)
      */
     virtual void OnAccept(const Endpoint &ep, Property &settings) = 0;

@@ -24,37 +24,31 @@
 
 namespace raptor {
 
-class Slice;
 class Endpoint;
 class Event;
+class Slice;
+struct EventDetail;
 
 namespace internal {
 
-// for epoll
-class IEpollReceiver {
+constexpr int kErrorEvent = 1;
+constexpr int kSendEvent = 1 << 1;
+constexpr int kRecvEvent = 1 << 2;
+constexpr int kConnectEvent = 1 << 3;
+constexpr int kAcceptEvent = 1 << 4;
+
+class EventReceivingService {
 public:
-    virtual ~IEpollReceiver() {}
-    virtual void OnErrorEvent(void *ptr) = 0;
-    virtual void OnRecvEvent(void *ptr) = 0;
-    virtual void OnSendEvent(void *ptr) = 0;
+    virtual ~EventReceivingService() {}
+    virtual void OnEventProcess(EventDetail *detail) = 0;
     virtual void OnTimeoutCheck(int64_t current_millseconds) = 0;
 };
 
-// for iocp
-class IIocpReceiver {
+class NotificationTransferService {
 public:
-    virtual ~IIocpReceiver() {}
-    virtual void OnErrorEvent(void *ptr, size_t err_code) = 0;
-    virtual void OnRecvEvent(void *ptr, size_t transferred_bytes, uint32_t handle_id) = 0;
-    virtual void OnSendEvent(void *ptr, size_t transferred_bytes, uint32_t handle_id) = 0;
-    virtual void OnTimeoutCheck(int64_t current_millseconds) = 0;
-};
-
-class INotificationTransfer {
-public:
-    virtual ~INotificationTransfer() {}
+    virtual ~NotificationTransferService() {}
     virtual void OnDataReceived(const Endpoint &ep, const Slice &s) = 0;
-    virtual void OnClosed(const Endpoint &ep, const Event& event) = 0;
+    virtual void OnClosed(const Endpoint &ep, const Event &event) = 0;
 };
 
 }  // namespace internal

@@ -30,6 +30,7 @@ class Slice;
 class EndpointImpl;
 class Endpoint final {
     friend class TcpContainer;
+    friend class ContainerImpl;
 
 public:
     Endpoint(std::shared_ptr<EndpointImpl> impl);
@@ -48,12 +49,12 @@ public:
     // is handed over to the container to complete.
     void BindWithContainer(Container *container);
 
-    bool SendMsg(const Slice &slice);
-    bool SendMsg(const void *data, size_t len);
+    bool SendMsg(const Slice &slice) const;
+    bool SendMsg(const void *data, size_t len) const;
 
     // Used directly, not bind with the container
-    int SyncRecv(void *data, size_t len);
-    int SyncSend(const void *data, size_t len);
+    int SyncRecv(void *data, size_t len) const;
+    int SyncSend(const void *data, size_t len) const;
 
     void Close(bool notify = false);
 

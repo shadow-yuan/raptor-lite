@@ -48,12 +48,12 @@ Connection::Connection(std::shared_ptr<EndpointImpl> obj)
 
 Connection::~Connection() {}
 
-void Connection::Init(internal::INotificationTransfer *service, EpollThread *t) {
+void Connection::Init(internal::NotificationTransferService *service, PollingThread *t) {
     _service = service;
     _epoll_thread = t;
 
     _epoll_thread->Add((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                       EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
+                       EPOLLIN | EPOLLET | EPOLLONESHOT);
 }
 
 void Connection::SetProtocol(ProtocolHandler *p) {
@@ -95,22 +95,25 @@ bool Connection::IsOnline() {
     return _endpoint->IsOnline();
 }
 
-bool Connection::DoRecvEvent() {
+raptor_error Connection::DoRecvEvent(EventDetail *detail) {
     int result = OnRecv();
     if (result == 0) {
         _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
                               EPOLLIN | EPOLLET | EPOLLONESHOT);
-        return true;
+        return RAPTOR_ERROR_NONE;
     }
-    return false;
+    return RAPTOR_POSIX_ERROR("Connection:OnRecv");
 }
 
-bool Connection::DoSendEvent() {
+raptor_error Connection::DoSendEvent(EventDetail *detail) {
     int result = OnSend();
-    if (result == 0) {
-        return true;
+    if (result == 0 && !_snd_buffer.Empty()) {
+        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
+                              EPOLLOUT | EPOLLET);
+        return RAPTOR_ERROR_NONE;
     }
-    return false;
+    return RAPTOR_POSIX_ERROR("Connection:OnSend");
+    ;
 }
 
 int Connection::OnRecv() {

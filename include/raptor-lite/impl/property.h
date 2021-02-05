@@ -108,9 +108,9 @@ public:
     Property() = default;
     ~Property() = default;
 
-    Property(std::initializer_list<PropertyEntry> init_list) {
+    Property(const std::initializer_list<PropertyEntry> &init_list) {
         for (auto it = init_list.begin(); it != init_list.end(); ++it) {
-            _tbl.insert(it->KeyValuePair());
+            _tbl[it->Key()] = it->Value<uintptr_t>();
         }
     }
 
@@ -131,6 +131,12 @@ public:
         }
         value = static_cast<T>(it->second);
         return true;
+    }
+
+    void operator()(const std::initializer_list<PropertyEntry> &init_list) {
+        for (auto it = init_list.begin(); it != init_list.end(); ++it) {
+            _tbl[it->Key()] = it->Value<uintptr_t>();
+        }
     }
 
 private:

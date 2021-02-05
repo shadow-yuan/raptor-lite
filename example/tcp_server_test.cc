@@ -1,34 +1,86 @@
 #include <stdint.h>
 #include <iostream>
 
-#include "raptor-lite/impl/acceptor.h"
-#include "raptor-lite/impl/container.h"
-#include "raptor-lite/impl/handler.h"
-#include "raptor-lite/impl/property.h"
-#include "raptor-lite/impl/endpoint.h"
+#include "raptor-lite/raptor-lite.h"
 
-#include "raptor-lite/utils/slice.h"
-#include "raptor-lite/utils/slice_buffer.h"
-
-class TcpServerTest : public raptor::AcceptorHandler, public raptor::MessageHandler {
+class TcpServerTest : public raptor::AcceptorHandler,
+                      public raptor::MessageHandler,
+                      public raptor::HeartbeatHandler,
+                      public raptor::EndpointClosedHandler {
 public:
     TcpServerTest(/* args */);
     ~TcpServerTest();
 
     void OnAccept(const raptor::Endpoint &ep, raptor::Property &settings) {
+        settings({{"SocketRecvTimeoutMs", 5000}, {"SocketSendTimeoutMs", 5000}});
         std::cout << "OnAccept:" << ep.PeerString() << std::endl;
+        std::cout << "  fd: " << ep.SocketFd() << std::endl;
+        std::cout << "  RemoteIp: " << ep.RemoteIp() << std::endl;
+        std::cout << "  RemotePort: " << ep.RemotePort() << std::endl;
+        std::cout << "  LocalIp: " << ep.LocalIp() << std::endl;
+        std::cout << "  LocalPort: " << ep.LocalPort() << std::endl;
+        std::cout << "  ConnectionId: " << ep.ConnectionId() << std::endl;
         container->AttachEndpoint(ep);
     }
 
     int OnMessage(const raptor::Endpoint &ep, const raptor::Slice &msg) {
         std::cout << "OnMessage:\n"
                   << "peer:" << ep.PeerString() << "\nmsg:" << msg.ToString() << std::endl;
+
+        std::string str = "Reply:" + msg.ToString();
+        ep.SendMsg(str);
         return 0;
     }
 
-    void start() {
-        acceptor->Start();
-        container->Start();
+    // heart-beat event
+    void OnHeartbeat(const raptor::Endpoint &ep) {
+        static int64_t current = 0;
+        static int i = 0;
+        if (current == 0) {
+            current = GetCurrentMilliseconds();
+            std::cout << "OnHeartbeat:  fd = " << ep.SocketFd() << std::endl;
+        } else {
+            int64_t now = GetCurrentMilliseconds();
+            std::cout << "OnHeartbeat:  fd = " << ep.SocketFd() << ", interval = " << now - current
+                      << std::endl;
+            current = now;
+        }
+        ep.SendMsg("This is a server heart-beat message!i:" + std::to_string(i++));
+    }
+
+    // millseconds
+    size_t GetHeartbeatInterval() {
+        return 30 * 1000;
+    }
+
+    void OnClosed(const raptor::Endpoint &ep, const raptor::Event &event) {
+        std::cout << "OnClosed:" << ep.PeerString() << std::endl;
+        std::cout << "  fd: " << ep.SocketFd() << std::endl;
+        std::cout << "  RemoteIp: " << ep.RemoteIp() << std::endl;
+        std::cout << "  RemotePort: " << ep.RemotePort() << std::endl;
+        std::cout << "  LocalIp: " << ep.LocalIp() << std::endl;
+        std::cout << "  LocalPort: " << ep.LocalPort() << std::endl;
+        std::cout << "  ConnectionId: " << ep.ConnectionId() << std::endl;
+        std::cout << "  Event: \n"
+                  << "    type: " << event.Type() << "    What: " << event.What() << std::endl;
+    }
+
+    void start_and_listening(const std::string &addr) {
+        raptor_error err = acceptor->Start();
+        if (err != RAPTOR_ERROR_NONE) {
+            std::cout << "Failed to Start: " << err->ToString() << std::endl;
+            return;
+        }
+        err = container->Start();
+        if (err != RAPTOR_ERROR_NONE) {
+            std::cout << "Failed to Start: " << err->ToString() << std::endl;
+            return;
+        }
+        err = acceptor->AddListening(addr);
+        if (err != RAPTOR_ERROR_NONE) {
+            std::cout << "Failed to Connect: " << err->ToString() << std::endl;
+            return;
+        }
     }
 
     void stop() {
@@ -42,7 +94,11 @@ private:
 };
 
 TcpServerTest::TcpServerTest(/* args */) {
-    raptor::Property p{{"MessageHandler", this}, {"AcceptorHandler", this}};
+    raptor::Property p{{"AcceptorHandler", this},
+                       {"MessageHandler", this},
+                       {"HeartbeatHandler", this},
+                       {"EndpointClosedHandler", this}};
+
     raptor_error err = raptor::CreateContainer(p, &container);
     if (err != RAPTOR_ERROR_NONE) {
         std::cout << "Failed to create container: " << err->ToString() << std::endl;
@@ -61,7 +117,10 @@ TcpServerTest::~TcpServerTest() {
 }
 
 int main(int argc, char *argv[]) {
-
+    std::cout << " ---- prepare start server ---- " << std::endl;
+    TcpServerTest server;
+    server.start_and_listening("localhost:50051");
     getchar();
+    server.stop();
     return 0;
 }
