@@ -17,6 +17,7 @@ public:
         std::cout << "  LocalIp: " << ep.LocalIp() << std::endl;
         std::cout << "  LocalPort: " << ep.LocalPort() << std::endl;
         std::cout << "  ConnectionId: " << ep.ConnectionId() << std::endl;
+        _ep = ep;
     }
 
     void OnErrorOccurred(const raptor::Endpoint &ep, raptor_error desc) {
@@ -51,9 +52,11 @@ public:
 
 private:
     raptor::Connector *cc = nullptr;
+    raptor::Endpoint _ep;
 };
 
-ClientHandler ::ClientHandler(/* args */) {}
+ClientHandler ::ClientHandler(/* args */)
+    : _ep(nullptr) {}
 
 ClientHandler ::~ClientHandler() {
     raptor::DestoryConnector(cc);

@@ -83,6 +83,7 @@ set(
 
 set(
     RAPTOR_UTILS_SOURCE
+    "${PROJECT_SOURCE_DIR}/src/utils/color.cc"
     "${PROJECT_SOURCE_DIR}/src/utils/cpu.cc"
     "${PROJECT_SOURCE_DIR}/src/utils/list_entry.cc"
     "${PROJECT_SOURCE_DIR}/src/utils/log.cc"

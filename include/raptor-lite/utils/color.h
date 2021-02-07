@@ -16,25 +16,18 @@
  *
  */
 
-#include "src/common/sockaddr.h"
-#include "raptor-lite/utils/log.h"
+#ifndef __RAPTOR_LITE_UTILS_COLOR__
+#define __RAPTOR_LITE_UTILS_COLOR__
 
-int RaptorGlobalStartup() {
-#ifdef _WIN32
-    WSADATA wsaData;
-    int status = WSAStartup(MAKEWORD(2, 0), &wsaData);
-    if (status != 0) {
-        log_error("Failed to WSAStartup, status = %d, error = %d", status, WSAGetLastError());
-    }
-    return status;
-#endif
-    return 0;
-}
+#include <stdio.h>
 
-int RaptorGlobalCleanup() {
-#ifdef _WIN32
-    return WSACleanup();
-#else
-    return 0;
-#endif
-}
+namespace raptor {
+
+enum Color { Default = 0, Black, Red, Green, Yellow, Blue, Magenta, Cyan, White };
+
+// f = stdout, stderror
+void SetConsoleColor(FILE *f, Color foreground, Color background);
+void ResetConsoleColor(FILE *f = stderr);
+}  // namespace raptor
+
+#endif  // __RAPTOR_LITE_UTILS_COLOR__

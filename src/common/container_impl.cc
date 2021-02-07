@@ -19,11 +19,12 @@
 #include "src/common/container_impl.h"
 #include <string.h>
 
-#include "raptor-lite/utils/mpscq.h"
-#include "raptor-lite/utils/log.h"
-#include "raptor-lite/utils/time.h"
 #include "raptor-lite/impl/endpoint.h"
 #include "raptor-lite/impl/event.h"
+#include "raptor-lite/utils/log.h"
+#include "raptor-lite/utils/mpscq.h"
+#include "raptor-lite/utils/time.h"
+
 #include "src/common/cid.h"
 #include "src/common/endpoint_impl.h"
 #include "src/common/resolve_address.h"
@@ -74,9 +75,10 @@ ContainerImpl::~ContainerImpl() {
 raptor_error ContainerImpl::Init() {
     if (!_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("tcp server already running");
 
-    _poll_thread = std::make_shared<PollingThread>(this);
+    _poll_thread   = std::make_shared<PollingThread>(this);
     raptor_error e = _poll_thread->Init(_option.recv_send_threads);
     if (e != RAPTOR_ERROR_NONE) {
+        log_error("ContainerImpl: Failed to init poll thread, %s", e->ToString().c_str());
         return e;
     }
 
@@ -90,7 +92,7 @@ raptor_error ContainerImpl::Init() {
     _count.Store(0);
 
     _running_threads = 0;
-    _mq_threads = new Thread[_option.mq_consumer_threads];
+    _mq_threads      = new Thread[_option.mq_consumer_threads];
     for (size_t i = 0; i < _option.mq_consumer_threads; i++) {
         bool success = false;
         _mq_threads[i] =
@@ -105,6 +107,7 @@ raptor_error ContainerImpl::Init() {
     }
 
     if (_running_threads == 0) {
+        log_error("ContainerImpl: Failed to create message queue thread");
         return RAPTOR_ERROR_FROM_STATIC_STRING("ContainerImpl: Failed to create mq threads");
     }
 
@@ -115,15 +118,17 @@ raptor_error ContainerImpl::Init() {
     }
     _conn_mtx.Unlock();
 
-    int64_t n = GetCurrentMilliseconds();
+    int64_t n     = GetCurrentMilliseconds();
     _magic_number = static_cast<uint16_t>(((n / 1000) >> 16) & 0xffff);
     _last_check_time.Store(n);
+    log_info("ContainerImpl: initialization completed");
     return RAPTOR_ERROR_NONE;
 }
 
 raptor_error ContainerImpl::Start() {
     raptor_error err = _poll_thread->Start();
     if (err != RAPTOR_ERROR_NONE) {
+        log_error("ContainerImpl: Failed to start poll thread");
         return RAPTOR_ERROR_FROM_STATIC_STRING("ContainerImpl: Failed to start poll thread");
     }
 
@@ -167,7 +172,7 @@ void ContainerImpl::Shutdown() {
         // clear message queue
         bool empty = true;
         do {
-            auto n = _mpscq.PopAndCheckEnd(&empty);
+            auto n   = _mpscq.PopAndCheckEnd(&empty);
             auto msg = reinterpret_cast<TcpMessageNode *>(n);
             if (msg != nullptr) {
                 _count.FetchSub(1, MemoryOrder::RELAXED);
@@ -208,6 +213,9 @@ raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep) {
     AutoMutex g(&_conn_mtx);
 
     if (_free_index_list.empty() && _mgr.size() >= _option.max_container_size) {
+        log_error(
+            "ContainerImpl: Failed to Attach Endpoint, MaxContainerSize = %u CurrentSize = %u",
+            _option.max_container_size, _mgr.size());
         raptor_error err = RAPTOR_ERROR_FROM_FORMAT(
             "The number of connections has exceeded the limit : %u", _option.max_container_size);
         return err;
@@ -222,7 +230,7 @@ raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep) {
 
         _mgr.resize(expand);
         for (size_t i = count; i < expand; i++) {
-            _mgr[i].first = nullptr;
+            _mgr[i].first  = nullptr;
             _mgr[i].second = _timeout_records.end();
             _free_index_list.emplace_back(static_cast<uint32_t>(i));
         }
@@ -231,8 +239,8 @@ raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep) {
     uint32_t index = _free_index_list.front();
     _free_index_list.pop_front();
 
-    uint16_t listen_port = obj->GetListenPort();
-    ConnectionId cid = core::BuildConnectionId(_magic_number, listen_port, index);
+    uint16_t listen_port  = obj->GetListenPort();
+    ConnectionId cid      = core::BuildConnectionId(_magic_number, listen_port, index);
     int64_t deadline_line = GetCurrentMilliseconds() + _option.connection_timeoutms;
 
     obj->SetConnection(cid);
@@ -254,8 +262,9 @@ raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep) {
 // Receiver implement (iocp / epoll event)
 void ContainerImpl::OnErrorEvent(uint32_t index, EventDetail *ptr) {
     raptor_error err = MakeRefCounted<Status>(ptr->error_code, "ContainerImpl:OnErrorEvent");
-    auto con = GetConnection(index);
+    auto con         = GetConnection(index);
     if (con) {
+        log_warn("ContainerImpl:OnErrorEvent index = %u", index);
         con->Shutdown(true, Event(kSocketError, err));
         DeleteConnection(index);
     }
@@ -273,7 +282,7 @@ void ContainerImpl::OnRecvEvent(uint32_t index, EventDetail *ptr) {
 
     con->Shutdown(true, Event(kSocketError, err));
     DeleteConnection(index);
-    log_error("ContainerImpl: Failed to exec DoRecvEvent");
+    log_error("ContainerImpl: Failed to DoRecvEvent");
 }
 
 void ContainerImpl::OnSendEvent(uint32_t index, EventDetail *ptr) {
@@ -288,7 +297,7 @@ void ContainerImpl::OnSendEvent(uint32_t index, EventDetail *ptr) {
 
     con->Shutdown(true, Event(kSocketError, err));
     DeleteConnection(index);
-    log_error("ContainerImpl: Failed to exec DoSendEvent");
+    log_error("ContainerImpl: Failed to DoSendEvent");
 }
 
 void ContainerImpl::OnEventProcess(EventDetail *detail) {
@@ -296,7 +305,7 @@ void ContainerImpl::OnEventProcess(EventDetail *detail) {
 
     uint32_t index = 0;
     if (!CheckConnectionId((ConnectionId)detail->ptr, &index)) {
-        log_error("ContainerImpl: OnEventProcess found invalid index, cid = %x event = %d",
+        log_error("ContainerImpl: Found an invalid index, cid = %x event = %d",
                   (uint64_t)detail->ptr, detail->event_type);
         return;
     }
@@ -336,6 +345,9 @@ void ContainerImpl::OnTimeoutCheck(int64_t current_millseconds) {
 
         ++it;
 
+        log_warn("ContainerImpl: Timeout checking, prepare to shutdown connection(index = %u)",
+                 index);
+
         _mgr[index].first->Shutdown(true, Event(kConnectionTimeout, err));
         _mgr[index].first.reset();
         _timeout_records.erase(_mgr[index].second);
@@ -348,8 +360,8 @@ void ContainerImpl::OnTimeoutCheck(int64_t current_millseconds) {
 
 void ContainerImpl::OnDataReceived(const Endpoint &ep, const Slice &s) {
     TcpMessageNode *msg = new TcpMessageNode(ep);
-    msg->slice = s;
-    msg->type = TcpMessageType::kRecvAMessage;
+    msg->slice          = s;
+    msg->type           = TcpMessageType::kRecvAMessage;
     _mpscq.push(&msg->node);
     _count.FetchAdd(1, MemoryOrder::ACQ_REL);
     _cv.Signal();
@@ -361,7 +373,7 @@ void ContainerImpl::OnClosed(const Endpoint &ep, const Event &event) {
     }
 
     TcpMessageNode *msg = new TcpMessageNode(ep, event);
-    msg->type = TcpMessageType::kCloseEvent;
+    msg->type           = TcpMessageType::kCloseEvent;
 
     _mpscq.push(&msg->node);
     _count.FetchAdd(1, MemoryOrder::ACQ_REL);
@@ -374,7 +386,7 @@ void ContainerImpl::OnTimerEvent(const Endpoint &ep) {
     }
 
     TcpMessageNode *msg = new TcpMessageNode(ep);
-    msg->type = TcpMessageType::kHeartbeatEvent;
+    msg->type           = TcpMessageType::kHeartbeatEvent;
 
     _mpscq.push(&msg->node);
     _count.FetchAdd(1, MemoryOrder::ACQ_REL);
@@ -392,7 +404,7 @@ void ContainerImpl::MessageQueueThread(void *) {
                 return;
             }
         }
-        auto n = _mpscq.pop();
+        auto n   = _mpscq.pop();
         auto msg = reinterpret_cast<struct TcpMessageNode *>(n);
 
         if (msg != nullptr) {
@@ -416,7 +428,8 @@ void ContainerImpl::Dispatch(struct TcpMessageNode *msg) {
         _option.heartbeat_handler->OnHeartbeat(msg->ep);
         break;
     default:
-        log_error("unknow message type %d", static_cast<int>(msg->type));
+        log_error("ContainerImpl: Dispatch found an unknow message type %d",
+                  static_cast<int>(msg->type));
         break;
     }
 }

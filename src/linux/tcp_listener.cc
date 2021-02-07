@@ -53,9 +53,10 @@ RefCountedPtr<Status> TcpListener::Init(int threads) {
     if (!_shutdown) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpAcceptor is already running");
     }
-    _poll_thread = std::make_shared<PollingThread>(this);
+    _poll_thread   = std::make_shared<PollingThread>(this);
     raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
+        log_error("TcpListener: Failed to init poll thread, %s", e->ToString().c_str());
         return e;
     }
     _poll_thread->EnableTimeoutCheck(false);
@@ -75,6 +76,7 @@ RefCountedPtr<Status> TcpListener::Start() {
 
 void TcpListener::Shutdown() {
     if (!_shutdown) {
+        log_warn("TcpListener: prepare to shutdown");
         _shutdown = true;
         _poll_thread->Shutdown();
 
@@ -82,7 +84,7 @@ void TcpListener::Shutdown() {
         list_entry *entry = _head.next;
         while (entry != &_head) {
             auto obj = reinterpret_cast<ListenerObject *>(entry);
-            entry = entry->next;
+            entry    = entry->next;
 
             close(obj->listen_fd);
             delete obj;
@@ -99,12 +101,12 @@ RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_addres
     raptor_dualstack_mode mode;
     raptor_error e = raptor_create_dualstack_socket(addr, SOCK_STREAM, 0, &mode, &listen_fd);
     if (e != RAPTOR_ERROR_NONE) {
-        log_error("Failed to create socket: %s", e->ToString().c_str());
+        log_error("TcpListener: Failed to create socket: %s", e->ToString().c_str());
         return e;
     }
     e = raptor_tcp_server_prepare_socket(listen_fd, addr, &port, 1);
     if (e != RAPTOR_ERROR_NONE) {
-        log_error("Failed to configure socket: %s", e->ToString().c_str());
+        log_error("TcpListener: Failed to configure socket: %s", e->ToString().c_str());
         return e;
     }
 
@@ -113,18 +115,19 @@ RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_addres
     ListenerObject *node = new ListenerObject;
     raptor_list_push_back(&_head, &node->entry);
 
-    node->addr = *addr;
+    node->addr      = *addr;
     node->listen_fd = listen_fd;
-    node->port = port;
-    node->mode = mode;
+    node->port      = port;
+    node->mode      = mode;
 
     _poll_thread->Add(node->listen_fd, node, EPOLLIN);
     _mtex.Unlock();
 
     char *strAddr = nullptr;
     raptor_sockaddr_to_string(&strAddr, addr, 0);
-    log_debug("start listening on %s", strAddr ? strAddr : std::to_string(node->port).c_str());
-    free(strAddr);
+    log_info("TcpListener: start listening on %s",
+             strAddr ? strAddr : std::to_string(node->port).c_str());
+    if (strAddr) free(strAddr);
     return e;
 }
 
@@ -145,7 +148,7 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
             }
         } else {
             if (errno != EINTR && errno != EAGAIN) {
-                log_error("Failed accept: %s on port: %d", strerror(errno), sp->port);
+                log_error("TcpListener: Failed accept on port %d (%s)", sp->port, strerror(errno));
             }
         }
     }

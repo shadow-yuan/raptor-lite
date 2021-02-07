@@ -19,6 +19,7 @@
 #include "src/windows/tcp_connector.h"
 #include "raptor-lite/impl/connector.h"
 #include "raptor-lite/impl/endpoint.h"
+#include "raptor-lite/utils/log.h"
 #include "src/common/endpoint_impl.h"
 #include "src/common/socket_util.h"
 #include "src/windows/socket_setting.h"
@@ -47,9 +48,10 @@ raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector is already running");
     }
 
-    _poll_thread = std::make_shared<PollingThread>(this);
+    _poll_thread   = std::make_shared<PollingThread>(this);
     raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
+        log_error("TcpConnector: Failed to init poll thread, %s", e->ToString().c_str());
         return e;
     }
     _poll_thread->EnableTimeoutCheck(false);
@@ -71,6 +73,7 @@ raptor_error TcpConnector::Start() {
 
 void TcpConnector::Shutdown() {
     if (!_shutdown) {
+        log_warn("TcpConnector: prepare to shutdown");
         _shutdown = true;
         _poll_thread->Shutdown();
 
@@ -96,6 +99,9 @@ raptor_error TcpConnector::Connect(const std::string &addr) {
     }
 
     e = InternalConnect(&addrs->addrs[0], _tcp_user_timeout_ms);
+    if (e != RAPTOR_ERROR_NONE) {
+        log_warn("TcpConnector: Failed to connect %s, %s", addr.c_str(), e->ToString().c_str());
+    }
     raptor_resolved_addresses_destroy(addrs);
     return e;
 }
@@ -225,6 +231,13 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr,
     _records.insert(reinterpret_cast<intptr_t>(entry));
     _poll_thread->Add(entry->fd, (void *)entry);
     _mtex.Unlock();
+
+    char *str_addr = nullptr;
+    raptor_sockaddr_to_string(&str_addr, &mapped_addr, 0);
+    if (str_addr) {
+        log_info("TcpConnector: start connecting %s", str_addr);
+        free(str_addr);
+    }
     return RAPTOR_ERROR_NONE;
 
 failure:

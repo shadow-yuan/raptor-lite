@@ -26,14 +26,14 @@
 #include <utility>
 #include <vector>
 
+#include "raptor-lite/impl/container.h"
+#include "raptor-lite/impl/handler.h"
 #include "raptor-lite/utils/mpscq.h"
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/sync.h"
-#include "raptor-lite/impl/handler.h"
-#include "raptor-lite/impl/container.h"
+#include "raptor-lite/utils/timer.h"
 
 #include "src/common/service.h"
-#include "src/utils/timer.h"
 
 namespace raptor {
 class Connection;
@@ -45,15 +45,15 @@ class ContainerImpl : public Container,
                       public internal::NotificationTransferService {
 public:
     typedef struct _Option {
-        size_t mq_consumer_threads = 1;
-        size_t recv_send_threads = 1;
-        size_t default_container_size = 256;
-        size_t max_container_size = 1048576;
-        size_t connection_timeoutms = 60000;  // 1 min
-        bool not_check_connection_timeout = true;
-        MessageHandler *msg_handler = nullptr;
-        ProtocolHandler *proto_handler = nullptr;
-        HeartbeatHandler *heartbeat_handler = nullptr;
+        size_t mq_consumer_threads            = 1;
+        size_t recv_send_threads              = 1;
+        size_t default_container_size         = 256;
+        size_t max_container_size             = 1048576;
+        size_t connection_timeoutms           = 60000;  // 1 min
+        bool not_check_connection_timeout     = true;
+        MessageHandler *msg_handler           = nullptr;
+        ProtocolHandler *proto_handler        = nullptr;
+        HeartbeatHandler *heartbeat_handler   = nullptr;
         EndpointClosedHandler *closed_handler = nullptr;
     } Option;
 
@@ -91,7 +91,7 @@ private:
 
 private:
     using TimeoutRecordMap = std::multimap<int64_t, uint32_t>;
-    using ConnectionInfo = std::pair<std::shared_ptr<Connection>, TimeoutRecordMap::iterator>;
+    using ConnectionInfo   = std::pair<std::shared_ptr<Connection>, TimeoutRecordMap::iterator>;
 
     bool _shutdown;
     ContainerImpl::Option _option;

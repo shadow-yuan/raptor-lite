@@ -28,7 +28,6 @@
 #else
 #include "src/windows/tcp_listener.h"
 #endif
-#include "raptor-lite/utils/log.h"
 #include "src/common/resolve_address.h"
 
 namespace raptor {
@@ -96,7 +95,7 @@ raptor_error CreateAcceptor(const Property &p, Acceptor **out) {
     }
 
     AcceptorAdaptor *adaptor = new AcceptorAdaptor(handler);
-    raptor_error e = adaptor->Init(ListenThreadNum);
+    raptor_error e           = adaptor->Init(ListenThreadNum);
     if (e == RAPTOR_ERROR_NONE) {
         *out = adaptor;
     }

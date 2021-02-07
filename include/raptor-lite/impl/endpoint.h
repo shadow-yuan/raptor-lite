@@ -33,7 +33,7 @@ class Endpoint final {
     friend class ContainerImpl;
 
 public:
-    Endpoint(std::shared_ptr<EndpointImpl> impl);
+    Endpoint(std::shared_ptr<EndpointImpl> impl = nullptr);
     ~Endpoint();
 
     uint64_t ConnectionId() const;

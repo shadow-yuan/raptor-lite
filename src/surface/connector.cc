@@ -21,7 +21,6 @@
 #include <memory>
 
 #include "raptor-lite/impl/property.h"
-#include "raptor-lite/utils/log.h"
 #ifdef _WIN32
 #include "src/windows/tcp_connector.h"
 #else
@@ -74,7 +73,7 @@ raptor_error CreateConnector(const Property &p, Connector **out) {
     ConnectorHandler *handler =
         reinterpret_cast<ConnectorHandler *>(p.GetValue<intptr_t>("ConnectorHandler"));
 
-    int ConnecThreadNum = p.GetValue("ConnecThreadNum", 1);
+    int ConnecThreadNum  = p.GetValue("ConnecThreadNum", 1);
     int TcpUserTimeoutMs = p.GetValue("TcpUserTimeoutMs", 0);
 
     *out = nullptr;
@@ -84,7 +83,7 @@ raptor_error CreateConnector(const Property &p, Connector **out) {
     }
 
     ConnectorAdaptor *adaptor = new ConnectorAdaptor(handler);
-    raptor_error e = adaptor->Init(ConnecThreadNum, TcpUserTimeoutMs);
+    raptor_error e            = adaptor->Init(ConnecThreadNum, TcpUserTimeoutMs);
     if (e == RAPTOR_ERROR_NONE) {
         *out = adaptor;
     }

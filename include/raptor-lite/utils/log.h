@@ -23,7 +23,7 @@
 #include "raptor-lite/utils/useful.h"
 
 namespace raptor {
-enum class LogLevel : int { kDebug, kInfo, kError, kDisable };
+enum class LogLevel : int { kDebug, kInfo, kWarn, kError, kDisable };
 
 typedef struct {
     const char *file;
@@ -45,6 +45,9 @@ void LogSetPrintCallback(LogPrintCallback callback);
 
 #define log_info(FMT, ...)                                                                         \
     raptor::LogFormatPrint(__FILE__, __LINE__, raptor::LogLevel::kInfo, FMT, ##__VA_ARGS__)
+
+#define log_warn(FMT, ...)                                                                         \
+    raptor::LogFormatPrint(__FILE__, __LINE__, raptor::LogLevel::kWarn, FMT, ##__VA_ARGS__)
 
 #define log_error(FMT, ...)                                                                        \
     raptor::LogFormatPrint(__FILE__, __LINE__, raptor::LogLevel::kError, FMT, ##__VA_ARGS__)

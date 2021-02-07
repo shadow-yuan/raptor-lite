@@ -36,7 +36,7 @@ EndpointImpl::EndpointImpl(uint64_t fd, raptor_resolved_address *addr)
     , _connection_id(core::InvalidConnectionId)
     , _container(nullptr) {
     _listen_port = 0;
-    _ext_info = 0;
+    _ext_info    = 0;
     memcpy(&_address, addr, sizeof(raptor_resolved_address));
 }
 
@@ -67,10 +67,13 @@ uint16_t EndpointImpl::GetListenPort() const {
 
 std::string EndpointImpl::PeerString() const {
     char *ptr = nullptr;
-    int ret = raptor_sockaddr_to_string(&ptr, &_address, 1);
-    std::string peer(ptr, ret);
-    free(ptr);
-    return peer;
+    int ret   = raptor_sockaddr_to_string(&ptr, &_address, 1);
+    if (ptr) {
+        std::string peer(ptr, ret);
+        free(ptr);
+        return peer;
+    }
+    return std::string();
 }
 
 void EndpointImpl::BindWithContainer(Container *container) {
@@ -129,7 +132,7 @@ std::string EndpointImpl::LocalIp() const {
     }
 
     char ip[128] = {0};
-    ret = raptor_sockaddr_get_ip(&local, ip, sizeof(ip));
+    ret          = raptor_sockaddr_get_ip(&local, ip, sizeof(ip));
     return std::string(ip, ret);
 }
 
@@ -145,7 +148,7 @@ uint16_t EndpointImpl::LocalPort() const {
 
 std::string EndpointImpl::RemoteIp() const {
     char ip[128] = {0};
-    int ret = raptor_sockaddr_get_ip(&_address, ip, sizeof(ip));
+    int ret      = raptor_sockaddr_get_ip(&_address, ip, sizeof(ip));
     return std::string(ip, ret);
 }
 

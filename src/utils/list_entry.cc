@@ -20,47 +20,45 @@
 
 void raptor_list_push_front(list_entry *head, list_entry *new_item) {
     list_entry *first = head->next;
-    head->next = new_item;
-    new_item->prev = head;
-    new_item->next = first;
-    first->prev = new_item;
+    head->next        = new_item;
+    new_item->prev    = head;
+    new_item->next    = first;
+    first->prev       = new_item;
 }
 
 void raptor_list_push_back(list_entry *head, list_entry *new_item) {
     list_entry *last = head->prev;
-    last->next = new_item;
-    new_item->prev = last;
-    new_item->next = head;
-    head->prev = new_item;
+    last->next       = new_item;
+    new_item->prev   = last;
+    new_item->next   = head;
+    head->prev       = new_item;
 }
 
 list_entry *raptor_list_pop_front(list_entry *head) {
-    list_entry *second = 0;
+    list_entry *second  = 0;
     list_entry *removed = 0;
     if (RAPTOR_LIST_IS_EMPTY(head)) {
         return 0;
     }
 
-    removed = head->next;
-    second = removed->next;
-
-    head->next = second;
+    removed      = head->next;
+    second       = removed->next;
+    head->next   = second;
     second->prev = head;
     return removed;
 }
 
 list_entry *raptor_list_pop_back(list_entry *head) {
-    list_entry *second = 0;
+    list_entry *second  = 0;
     list_entry *removed = 0;
     if (RAPTOR_LIST_IS_EMPTY(head)) {
         return 0;
     }
 
-    removed = head->prev;
-    second = removed->prev;
-
+    removed      = head->prev;
+    second       = removed->prev;
     second->next = head;
-    head->prev = second;
+    head->prev   = second;
     return removed;
 }
 
@@ -70,9 +68,8 @@ int raptor_list_remove_entry(list_entry *item) {
     }
 
     list_entry *prior = item->prev;
-    list_entry *next = item->next;
-
-    prior->next = next;
-    next->prev = prior;
+    list_entry *next  = item->next;
+    prior->next       = next;
+    next->prev        = prior;
     return 1;
 }

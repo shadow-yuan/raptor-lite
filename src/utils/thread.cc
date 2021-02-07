@@ -57,10 +57,10 @@ public:
         RaptorCondVarInit(&_ready);
 
         ThreadImplArgs *info = new ThreadImplArgs;
-        info->thd = this;
-        info->thread_proc = thread_proc;
-        info->arg = arg;
-        info->joinable = options.Joinable();
+        info->thd            = this;
+        info->thread_proc    = thread_proc;
+        info->arg            = arg;
+        info->joinable       = options.Joinable();
         strncpy(info->name, name, sizeof(info->name));
 
 #ifdef _WIN32
@@ -75,7 +75,7 @@ public:
         }
 
         size_t dwStackSize = (options.StackSize() == 0) ? (64 * 1024) : options.StackSize();
-        HANDLE handle = CreateThread(NULL, dwStackSize, Run, info, 0, NULL);
+        HANDLE handle      = CreateThread(NULL, dwStackSize, Run, info, 0, NULL);
         if (handle == NULL) {
             CloseHandle(info->join_object);
             *success = false;
@@ -143,7 +143,7 @@ private:
         try {
             (info.thread_proc)(info.arg);
         } catch (...) {
-            log_error("An exception occurred in %s thread", info.name);
+            log_error("An exception occurred in %s thread function", info.name);
         }
 
 #ifdef _WIN32
@@ -175,7 +175,7 @@ Thread::Thread()
 Thread::Thread(const char *thread_name, Thread::Callback thread_proc, void *arg, bool *success,
                const Options &options) {
     bool ret = false;
-    _impl = new InternalThreadImpl(thread_name, thread_proc, arg, &ret, options);
+    _impl    = new InternalThreadImpl(thread_name, thread_proc, arg, &ret, options);
     if (!ret) {
         _state = kFailed;
         delete _impl;
@@ -191,15 +191,15 @@ Thread::Thread(const char *thread_name, Thread::Callback thread_proc, void *arg,
 Thread::Thread(Thread &&other)
     : _impl(other._impl)
     , _state(other._state) {
-    other._impl = nullptr;
+    other._impl  = nullptr;
     other._state = kNull;
 }
 
 Thread &Thread::operator=(Thread &&other) {
     if (this != &other) {
-        _impl = other._impl;
-        _state = other._state;
-        other._impl = nullptr;
+        _impl        = other._impl;
+        _state       = other._state;
+        other._impl  = nullptr;
         other._state = kNull;
     }
     return *this;
@@ -224,7 +224,7 @@ void Thread::Join() {
         _impl->Join();
         delete _impl;
         _state = kFinish;
-        _impl = nullptr;
+        _impl  = nullptr;
     } else {
         RAPTOR_ASSERT(_state == kFailed);
     }

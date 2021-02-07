@@ -16,16 +16,17 @@
  *
  */
 
-#include "src/utils/timer.h"
+#include "raptor-lite/utils/timer.h"
 
 #include <assert.h>
-#include <functional>
 
 #ifdef _WIN32
 #include <Windows.h>
 #else
 #include <unistd.h>
 #endif
+
+#include <functional>
 
 #include "raptor-lite/utils/time.h"
 

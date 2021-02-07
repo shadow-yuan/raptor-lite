@@ -43,13 +43,13 @@ Connection::Connection(std::shared_ptr<EndpointImpl> obj)
     , _epoll_thread(nullptr) {
 
     _handle_id = global_counter.FetchAdd(1, MemoryOrder::RELAXED);
-    _endpoint = obj;
+    _endpoint  = obj;
 }
 
 Connection::~Connection() {}
 
 void Connection::Init(internal::NotificationTransferService *service, PollingThread *t) {
-    _service = service;
+    _service      = service;
     _epoll_thread = t;
 
     _epoll_thread->Add((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
@@ -102,7 +102,7 @@ raptor_error Connection::DoRecvEvent(EventDetail *detail) {
                               EPOLLIN | EPOLLET | EPOLLONESHOT);
         return RAPTOR_ERROR_NONE;
     }
-    return RAPTOR_POSIX_ERROR("Connection:OnRecv");
+    return RAPTOR_POSIX_ERROR("Connection:OnRecv, connection may be closed");
 }
 
 raptor_error Connection::DoSendEvent(EventDetail *detail) {
@@ -112,20 +112,19 @@ raptor_error Connection::DoSendEvent(EventDetail *detail) {
                               EPOLLOUT | EPOLLET);
         return RAPTOR_ERROR_NONE;
     }
-    return RAPTOR_POSIX_ERROR("Connection:OnSend");
-    ;
+    return RAPTOR_POSIX_ERROR("Connection:OnSend, connection may be closed");
 }
 
 int Connection::OnRecv() {
     AutoMutex g(&_rcv_mutex);
 
-    int recv_bytes = 0;
+    int recv_bytes   = 0;
     int unused_space = 0;
     do {
         char buffer[8192];
 
         unused_space = sizeof(buffer);
-        recv_bytes = ::recv((int)_endpoint->_fd, buffer, unused_space, 0);
+        recv_bytes   = ::recv((int)_endpoint->_fd, buffer, unused_space, 0);
 
         if (recv_bytes == 0) {
             return -1;
@@ -162,7 +161,7 @@ int Connection::OnSend() {
     do {
 
         Slice slice = _snd_buffer.Front();
-        int slen = ::send((int)_endpoint->_fd, slice.begin(), slice.size(), 0);
+        int slen    = ::send((int)_endpoint->_fd, slice.begin(), slice.size(), 0);
 
         if (slen == 0) {
             return -1;
@@ -193,19 +192,19 @@ bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice &s) {
 }
 
 int Connection::ParsingProtocol() {
-    size_t cache_size = _rcv_buffer.GetBufferLength();
+    size_t cache_size            = _rcv_buffer.GetBufferLength();
     constexpr size_t header_size = 1024;
-    int package_counter = 0;
+    int package_counter          = 0;
 
     while (cache_size > 0) {
         size_t read_size = header_size;
-        int pack_len = 0;
+        int pack_len     = 0;
         Slice package;
         do {
             bool reach_tail = ReadSliceFromRecvBuffer(read_size, package);
             pack_len = _proto->OnCheckPackageLength(_endpoint, package.begin(), package.size());
             if (pack_len < 0) {
-                log_error("Connection: internal protocol error");
+                log_warn("Connection: Internal protocol parsing error");
                 return -1;
             }
 

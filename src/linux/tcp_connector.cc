@@ -20,7 +20,9 @@
 #include <string.h>
 #include "raptor-lite/impl/connector.h"
 #include "raptor-lite/impl/endpoint.h"
+#include "raptor-lite/utils/log.h"
 #include "src/common/endpoint_impl.h"
+#include "src/common/socket_util.h"
 #include "src/linux/socket_setting.h"
 
 namespace raptor {
@@ -43,9 +45,10 @@ raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector is already running");
     }
 
-    _poll_thread = std::make_shared<PollingThread>(this);
+    _poll_thread   = std::make_shared<PollingThread>(this);
     raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
+        log_error("TcpConnector: Failed to init poll thread, %s", e->ToString().c_str());
         return e;
     }
     _poll_thread->EnableTimeoutCheck(false);
@@ -67,6 +70,7 @@ raptor_error TcpConnector::Start() {
 
 void TcpConnector::Shutdown() {
     if (!_shutdown) {
+        log_warn("TcpConnector: prepare to shutdown");
         _shutdown = true;
         _poll_thread->Shutdown();
 
@@ -92,6 +96,9 @@ raptor_error TcpConnector::Connect(const std::string &addr) {
     }
 
     e = AsyncConnect(&addrs->addrs[0], _tcp_user_timeout_ms);
+    if (e != RAPTOR_ERROR_NONE) {
+        log_warn("TcpConnector: Failed to connect %s, %s", addr.c_str(), e->ToString().c_str());
+    }
     raptor_resolved_addresses_destroy(addrs);
     return e;
 }
@@ -115,12 +122,20 @@ raptor_error TcpConnector::AsyncConnect(const raptor_resolved_address *addr, int
         return RAPTOR_POSIX_ERROR("connect");
     }
 
-    AutoMutex g(&_mtex);
+    _mtex.Lock();
     auto entry = new struct async_connect_record_entry;
-    entry->fd = sock_fd;
+    entry->fd  = sock_fd;
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
     _poll_thread->Add(sock_fd, (void *)entry, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
+    _mtex.Unlock();
+
+    char *str_addr = nullptr;
+    raptor_sockaddr_to_string(&str_addr, &mapped_addr, 0);
+    if (str_addr) {
+        log_info("TcpConnector: start connecting %s", str_addr);
+        free(str_addr);
+    }
     return RAPTOR_ERROR_NONE;
 }
 
@@ -141,7 +156,7 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
             ProcessProperty(entry->fd, property);
         }
     } else {
-        int error_code = raptor_get_socket_error(entry->fd);
+        int error_code   = raptor_get_socket_error(entry->fd);
         raptor_error err = MakeRefCounted<Status>(error_code, "getsockopt(SO_ERROR)");
         _handler->OnErrorOccurred(endpoint, err);
         close(entry->fd);

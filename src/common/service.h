@@ -31,16 +31,16 @@ struct EventDetail;
 
 namespace internal {
 
-constexpr int kErrorEvent = 1;
-constexpr int kSendEvent = 1 << 1;
-constexpr int kRecvEvent = 1 << 2;
+constexpr int kErrorEvent   = 1;
+constexpr int kSendEvent    = 1 << 1;
+constexpr int kRecvEvent    = 1 << 2;
 constexpr int kConnectEvent = 1 << 3;
-constexpr int kAcceptEvent = 1 << 4;
+constexpr int kAcceptEvent  = 1 << 4;
 
 class EventReceivingService {
 public:
     virtual ~EventReceivingService() {}
-    virtual void OnEventProcess(EventDetail *detail) = 0;
+    virtual void OnEventProcess(EventDetail *detail)         = 0;
     virtual void OnTimeoutCheck(int64_t current_millseconds) = 0;
 };
 
@@ -48,7 +48,7 @@ class NotificationTransferService {
 public:
     virtual ~NotificationTransferService() {}
     virtual void OnDataReceived(const Endpoint &ep, const Slice &s) = 0;
-    virtual void OnClosed(const Endpoint &ep, const Event &event) = 0;
+    virtual void OnClosed(const Endpoint &ep, const Event &event)   = 0;
 };
 
 }  // namespace internal

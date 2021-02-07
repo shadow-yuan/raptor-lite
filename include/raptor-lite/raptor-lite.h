@@ -28,6 +28,7 @@
 #include <raptor-lite/impl/property.h>
 
 #include <raptor-lite/utils/atomic.h>
+#include <raptor-lite/utils/color.h>
 #include <raptor-lite/utils/cpu.h>
 #include <raptor-lite/utils/list_entry.h>
 #include <raptor-lite/utils/log.h>
@@ -40,6 +41,7 @@
 #include <raptor-lite/utils/sync.h>
 #include <raptor-lite/utils/thread.h>
 #include <raptor-lite/utils/time.h>
+#include <raptor-lite/utils/timer.h>
 #include <raptor-lite/utils/useful.h>
 
 int RaptorGlobalStartup();
