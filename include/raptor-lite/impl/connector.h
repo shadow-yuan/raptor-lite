@@ -39,16 +39,17 @@ public:
      *   3. SocketRecvTimeoutMs (int, millseconds)
      *   4. SocketSendTimeoutMs (int, millseconds)
      *   5. SocketLowLatency    (bool, default:true)
+     *   6. SocketNonBlocking   (book, default:true)
      */
-    virtual void OnConnect(const Endpoint &ep, Property &settings) = 0;
+    virtual void OnConnect(const Endpoint &ep, Property &settings)      = 0;
     virtual void OnErrorOccurred(const Endpoint &ep, raptor_error desc) = 0;
 };
 
 class Connector {
 public:
     virtual ~Connector() {}
-    virtual raptor_error Start() = 0;
-    virtual void Shutdown() = 0;
+    virtual raptor_error Start()                          = 0;
+    virtual void Shutdown()                               = 0;
     virtual raptor_error Connect(const std::string &addr) = 0;
 };
 

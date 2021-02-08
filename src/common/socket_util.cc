@@ -284,8 +284,8 @@ int raptor_sockaddr_get_ip(const raptor_resolved_address *resolved_addr, char *d
             }
             free(host_with_scope);
         } else {
-            memcpy(dst, ntop_buf, INET6_ADDRSTRLEN);
-            ret = INET6_ADDRSTRLEN;
+            ret = strlen(ntop_buf);
+            memcpy(dst, ntop_buf, ret);
         }
         return ret;
     }

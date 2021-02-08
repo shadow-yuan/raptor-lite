@@ -165,7 +165,7 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     raptor_sockaddr_to_string(&addr_string, &mapped_addr, 0);
     log_debug("TcpListener: start listening on %s",
               addr_string ? addr_string : std::to_string(node->port).c_str());
-    if (strAddr) free(addr_string);
+    if (addr_string) free(addr_string);
     return e;
 }
 
@@ -291,25 +291,19 @@ void TcpListener::ParsingNewConnectionAddress(const ListenerObject *sp,
 }
 
 void TcpListener::ProcessProperty(SOCKET fd, const Property &p) {
-    /*
-        raptor_set_socket_no_sigpipe_if_possible(sock_fd);
-        raptor_set_socket_reuse_addr(sock_fd, 1);
-        raptor_set_socket_rcv_timeout(sock_fd, 5000);
-        raptor_set_socket_snd_timeout(sock_fd, 5000);
-    */
-    bool SocketNoSIGPIPE = false;
+    bool SocketNoSIGPIPE = true;
     if (p.CheckValue<bool>("SocketNoSIGPIPE", SocketNoSIGPIPE) && SocketNoSIGPIPE) {
         raptor_set_socket_no_sigpipe_if_possible(fd);
     }
 
-    bool SocketReuseAddress = false;
-    if (p.CheckValue<bool>("SocketReuseAddress", SocketReuseAddress) && SocketReuseAddress) {
-        raptor_set_socket_reuse_addr(fd, 1);
+    bool SocketReuseAddress = true;
+    if (p.CheckValue<bool>("SocketReuseAddress", SocketReuseAddress) && !SocketReuseAddress) {
+        raptor_set_socket_reuse_addr(fd, 0);
     }
 
-    bool SocketLowLatency = false;
-    if (p.CheckValue<bool>("SocketLowLatency", SocketLowLatency) && SocketLowLatency) {
-        raptor_set_socket_low_latency(fd, 1);
+    bool SocketLowLatency = true;
+    if (p.CheckValue<bool>("SocketLowLatency", SocketLowLatency) && !SocketLowLatency) {
+        raptor_set_socket_low_latency(fd, 0);
     }
 
     int SocketSendTimeoutMs = 0;
@@ -320,6 +314,11 @@ void TcpListener::ProcessProperty(SOCKET fd, const Property &p) {
     int SocketRecvTimeoutMs = 0;
     if (p.CheckValue<int>("SocketRecvTimeoutMs", SocketRecvTimeoutMs) && SocketRecvTimeoutMs > 0) {
         raptor_set_socket_rcv_timeout(fd, SocketRecvTimeoutMs);
+    }
+
+    bool SocketNonBlocking = true;
+    if (p.CheckValue<bool>("SocketNonBlocking", SocketNonBlocking) && !SocketNonBlocking) {
+        raptor_set_socket_nonblocking(fd, 0);
     }
 }
 

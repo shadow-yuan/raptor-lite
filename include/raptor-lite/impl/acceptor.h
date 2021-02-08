@@ -39,6 +39,7 @@ public:
      *   3. SocketRecvTimeoutMs (int)
      *   4. SocketSendTimeoutMs (int)
      *   5. SocketLowLatency    (bool, default: true)
+     *   6. SocketNonBlocking   (book, default: true)
      */
     virtual void OnAccept(const Endpoint &ep, Property &settings) = 0;
 };

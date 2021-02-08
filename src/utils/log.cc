@@ -42,15 +42,15 @@ void log_default_print(LogArgument *args);
 AtomicIntptr g_log_function((intptr_t)log_default_print);
 AtomicIntptr g_min_level((intptr_t)LogLevel::kDebug);
 char g_level_char[static_cast<int>(LogLevel::kDisable)] = {'D', 'I', 'W', 'E'};
-Color g_fc_table[static_cast<int>(LogLevel::kDisable)]  = {Blue, Green, Black, White};
-Color g_bc_table[static_cast<int>(LogLevel::kDisable)]  = {Black, Black, Yellow, Red};
+Color g_fc_table[static_cast<int>(LogLevel::kDisable)] = {Cyan, Green, Yellow, Red};
+Color g_bc_table[static_cast<int>(LogLevel::kDisable)] = {Black, Black, Black, White};
 
 #ifdef _WIN32
 static __declspec(thread) unsigned long tls_tid = 0;
-constexpr char delimiter                        = '\\';
+constexpr char delimiter = '\\';
 #else
 static __thread unsigned long tls_tid = 0;
-constexpr char delimiter              = '/';
+constexpr char delimiter = '/';
 #endif
 
 void log_default_print(LogArgument *args) {
@@ -62,9 +62,9 @@ void log_default_print(LogArgument *args) {
 #endif
     }
 
-    const char *last_slash   = NULL;
+    const char *last_slash = NULL;
     const char *display_file = NULL;
-    char time_buffer[64]     = {0};
+    char time_buffer[64] = {0};
 
     last_slash = strrchr(args->file, delimiter);
     if (last_slash == NULL) {
@@ -99,12 +99,14 @@ void log_default_print(LogArgument *args) {
 
     SetConsoleColor(stderr, fc, bc);
 
-    fprintf(stderr, "[%s.%06d %7lu %c] %s (%s:%d)\n", time_buffer,
+    fprintf(stderr, "[%s.%06d %7lu %c] %s (%s:%d)", time_buffer,
             now.tv_usec,  // microseconds
             tls_tid, g_level_char[static_cast<int>(args->level)], args->message, display_file,
             args->line);
 
     ResetConsoleColor(stderr);
+
+    fprintf(stderr, "\n");
 
     fflush(stderr);
 }
@@ -134,7 +136,7 @@ void LogFormatPrint(const char *file, int line, LogLevel level, const char *form
     }
 
     size_t buff_len = (size_t)ret + 1;
-    message         = (char *)malloc(buff_len);
+    message = (char *)malloc(buff_len);
     va_start(args, format);
     ret = vsnprintf_s(message, buff_len, _TRUNCATE, format, args);
     va_end(args);
@@ -147,9 +149,9 @@ void LogFormatPrint(const char *file, int line, LogLevel level, const char *form
 
     if (g_min_level.Load() <= static_cast<intptr_t>(level)) {
         LogArgument tmp;
-        tmp.file    = file;
-        tmp.line    = line;
-        tmp.level   = level;
+        tmp.file = file;
+        tmp.line = line;
+        tmp.level = level;
         tmp.message = message;
         ((LogPrintCallback)g_log_function.Load())(&tmp);
     }

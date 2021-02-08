@@ -43,13 +43,13 @@ Connection::Connection(std::shared_ptr<EndpointImpl> obj)
     , _epoll_thread(nullptr) {
 
     _handle_id = global_counter.FetchAdd(1, MemoryOrder::RELAXED);
-    _endpoint  = obj;
+    _endpoint = obj;
 }
 
 Connection::~Connection() {}
 
 void Connection::Init(internal::NotificationTransferService *service, PollingThread *t) {
-    _service      = service;
+    _service = service;
     _epoll_thread = t;
 
     _epoll_thread->Add((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
@@ -65,7 +65,7 @@ bool Connection::SendMsg(const void *data, size_t data_len) {
     AutoMutex g(&_snd_mutex);
     _snd_buffer.AddSlice(Slice(data, data_len));
     _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                          EPOLLOUT | EPOLLET);
+                          EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
     return true;
 }
 
@@ -98,33 +98,38 @@ bool Connection::IsOnline() {
 raptor_error Connection::DoRecvEvent(EventDetail *detail) {
     int result = OnRecv();
     if (result == 0) {
-        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                              EPOLLIN | EPOLLET | EPOLLONESHOT);
+        int flags = EPOLLIN | EPOLLET | EPOLLONESHOT;
+        if (!_snd_buffer.Empty()) {
+            flags |= EPOLLOUT;
+        }
+        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id, flags);
         return RAPTOR_ERROR_NONE;
     }
-    return RAPTOR_POSIX_ERROR("Connection:OnRecv, connection may be closed");
+    return RAPTOR_POSIX_ERROR("Connection:OnRecv, peer may be closed");
 }
 
 raptor_error Connection::DoSendEvent(EventDetail *detail) {
     int result = OnSend();
-    if (result == 0 && !_snd_buffer.Empty()) {
+    if (result != -1 && !_snd_buffer.Empty()) {
         _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                              EPOLLOUT | EPOLLET);
-        return RAPTOR_ERROR_NONE;
+                              EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
+    } else {
+        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
+                              EPOLLIN | EPOLLET | EPOLLONESHOT);
     }
-    return RAPTOR_POSIX_ERROR("Connection:OnSend, connection may be closed");
+    return RAPTOR_ERROR_NONE;
 }
 
 int Connection::OnRecv() {
     AutoMutex g(&_rcv_mutex);
 
-    int recv_bytes   = 0;
+    int recv_bytes = 0;
     int unused_space = 0;
     do {
         char buffer[8192];
 
         unused_space = sizeof(buffer);
-        recv_bytes   = ::recv((int)_endpoint->_fd, buffer, unused_space, 0);
+        recv_bytes = ::recv((int)_endpoint->_fd, buffer, unused_space, 0);
 
         if (recv_bytes == 0) {
             return -1;
@@ -161,7 +166,7 @@ int Connection::OnSend() {
     do {
 
         Slice slice = _snd_buffer.Front();
-        int slen    = ::send((int)_endpoint->_fd, slice.begin(), slice.size(), 0);
+        int slen = ::send((int)_endpoint->_fd, slice.begin(), slice.size(), 0);
 
         if (slen == 0) {
             return -1;
@@ -169,7 +174,7 @@ int Connection::OnSend() {
 
         if (slen < 0) {
             if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN) {
-                return 0;
+                return 1;
             }
             return -1;
         }
@@ -192,13 +197,13 @@ bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice &s) {
 }
 
 int Connection::ParsingProtocol() {
-    size_t cache_size            = _rcv_buffer.GetBufferLength();
+    size_t cache_size = _rcv_buffer.GetBufferLength();
     constexpr size_t header_size = 1024;
-    int package_counter          = 0;
+    int package_counter = 0;
 
     while (cache_size > 0) {
         size_t read_size = header_size;
-        int pack_len     = 0;
+        int pack_len = 0;
         Slice package;
         do {
             bool reach_tail = ReadSliceFromRecvBuffer(read_size, package);

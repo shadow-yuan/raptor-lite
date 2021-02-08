@@ -27,8 +27,9 @@ int RaptorGlobalStartup() {
         log_error("Failed to WSAStartup, status = %d, error = %d", status, WSAGetLastError());
     }
     return status;
-#endif
+#else
     return 0;
+#endif
 }
 
 int RaptorGlobalCleanup() {

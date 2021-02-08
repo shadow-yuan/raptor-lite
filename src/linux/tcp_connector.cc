@@ -168,19 +168,19 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
 }
 
 void TcpConnector::ProcessProperty(int fd, const Property &p) {
-    bool SocketNoSIGPIPE = false;
+    bool SocketNoSIGPIPE = true;
     if (p.CheckValue<bool>("SocketNoSIGPIPE", SocketNoSIGPIPE) && SocketNoSIGPIPE) {
         raptor_set_socket_no_sigpipe_if_possible(fd);
     }
 
-    bool SocketReuseAddress = false;
-    if (p.CheckValue<bool>("SocketReuseAddress", SocketReuseAddress) && SocketReuseAddress) {
-        raptor_set_socket_reuse_addr(fd, 1);
+    bool SocketReuseAddress = true;
+    if (p.CheckValue<bool>("SocketReuseAddress", SocketReuseAddress) && !SocketReuseAddress) {
+        raptor_set_socket_reuse_addr(fd, 0);
     }
 
-    bool SocketLowLatency = false;
-    if (p.CheckValue<bool>("SocketLowLatency", SocketLowLatency) && SocketLowLatency) {
-        raptor_set_socket_low_latency(fd, 1);
+    bool SocketLowLatency = true;
+    if (p.CheckValue<bool>("SocketLowLatency", SocketLowLatency) && !SocketLowLatency) {
+        raptor_set_socket_low_latency(fd, 0);
     }
 
     int SocketSendTimeoutMs = 0;
@@ -191,6 +191,11 @@ void TcpConnector::ProcessProperty(int fd, const Property &p) {
     int SocketRecvTimeoutMs = 0;
     if (p.CheckValue<int>("SocketRecvTimeoutMs", SocketRecvTimeoutMs) && SocketRecvTimeoutMs > 0) {
         raptor_set_socket_rcv_timeout(fd, SocketRecvTimeoutMs);
+    }
+
+    bool SocketNonBlocking = true;
+    if (p.CheckValue<bool>("SocketNonBlocking", SocketNonBlocking) && !SocketNonBlocking) {
+        raptor_set_socket_nonblocking(fd, 0);
     }
 }
 }  // namespace raptor

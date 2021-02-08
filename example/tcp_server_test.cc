@@ -127,6 +127,7 @@ int main() {
     TcpServerTest server;
     server.init();
     server.start_and_listening("localhost:50051");
+    log_error("Press any key to quit");
     getchar();
     server.stop();
     RaptorGlobalCleanup();
