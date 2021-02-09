@@ -34,6 +34,8 @@ typedef struct {
 
 typedef void (*LogPrintCallback)(LogArgument *arg);
 
+void LogStartup();
+void LogCleanup();
 void LogSetLevel(LogLevel level);
 void LogFormatPrint(const char *file, int line, LogLevel level, const char *format, ...);
 void LogSetPrintCallback(LogPrintCallback callback);

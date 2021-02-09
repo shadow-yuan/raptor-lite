@@ -61,7 +61,6 @@ private:
     LPFN_GETACCEPTEXSOCKADDRS _GetAcceptExSockAddrs;
 
     list_entry _head;
-    OVERLAPPED _exit;
 
     Mutex _mutex;  // for list_entry
     std::shared_ptr<PollingThread> _poll_thread;

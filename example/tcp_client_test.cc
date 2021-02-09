@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include <iostream>
+#include <sstream>
 #include <thread>
 
 #include "raptor-lite/raptor-lite.h"
@@ -18,39 +19,40 @@ public:
         settings({{"SocketNonBlocking", false},
                   {"SocketRecvTimeoutMs", 5000},
                   {"SocketSendTimeoutMs", 5000}});
-        std::cout << "OnConnect:" << ep.PeerString() << std::endl;
-        std::cout << "  fd: " << ep.SocketFd() << std::endl;
-        std::cout << "  RemoteIp: " << ep.RemoteIp() << std::endl;
-        std::cout << "  RemotePort: " << ep.RemotePort() << std::endl;
-        std::cout << "  LocalIp: " << ep.LocalIp() << std::endl;
-        std::cout << "  LocalPort: " << ep.LocalPort() << std::endl;
-        std::cout << "  ConnectionId: " << ep.ConnectionId() << std::endl;
+        std::stringstream ss;
+        ss << "OnConnect:" << ep.PeerString() << std::endl;
+        ss << "  fd: " << ep.SocketFd() << std::endl;
+        ss << "  RemoteIp: " << ep.RemoteIp() << std::endl;
+        ss << "  RemotePort: " << ep.RemotePort() << std::endl;
+        ss << "  LocalIp: " << ep.LocalIp() << std::endl;
+        ss << "  LocalPort: " << ep.LocalPort() << std::endl;
+        ss << "  ConnectionId: " << ep.ConnectionId() << std::endl;
+        log_debug("%s", ss.str().c_str());
         _ep = ep;
         g_cv.Signal();
     }
 
     void OnErrorOccurred(const raptor::Endpoint &ep, raptor_error desc) {
-        std::cout << "OnErrorOccurred:\n  "
-                  << "fd: " << ep.SocketFd() << "\n  desc: " << desc->ToString() << std::endl;
+        log_debug("OnErrorOccurred:  fd:%lld desc:%s", ep.SocketFd(), desc->ToString().c_str());
     }
 
     void init() {
         raptor::Property p{{"ConnectorHandler", static_cast<ConnectorHandler *>(this)}};
         raptor_error err = raptor::CreateConnector(p, &cc);
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "CreateConnector: " << err->ToString() << std::endl;
+            log_error("Failed to create connector: %s", err->ToString().c_str());
         }
     }
 
     void start_and_connecting(const std::string &addr) {
         raptor_error err = cc->Start();
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to Start: " << err->ToString() << std::endl;
+            log_error("Failed to Start: %s", err->ToString().c_str());
             return;
         }
         err = cc->Connect(addr);
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to Connect: " << err->ToString() << std::endl;
+            log_error("Failed to Connect: %s", err->ToString().c_str());
             return;
         }
     }
@@ -81,8 +83,8 @@ ClientHandler ::~ClientHandler() {
 }
 
 int main() {
-    RaptorGlobalStartup();
     std::cout << " ---- prepare start client ---- " << std::endl;
+    RaptorGlobalStartup();
     ClientHandler client;
     client.init();
     client.start_and_connecting("localhost:50051");

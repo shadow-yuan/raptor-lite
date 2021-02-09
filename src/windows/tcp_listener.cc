@@ -38,15 +38,15 @@ struct ListenerObject {
     raptor_dualstack_mode mode;
     uint8_t addr_buffer[(sizeof(raptor_sockaddr_in6) + 16) * 2];
     raptor_resolved_address addr;
-    OVERLAPPED overlapped;
+    OverLappedEx ole;
     ListenerObject() {
         RAPTOR_LIST_ENTRY_INIT(&entry);
-        listen_fd  = INVALID_SOCKET;
+        listen_fd = INVALID_SOCKET;
         new_socket = INVALID_SOCKET;
-        port       = 0;
+        port = 0;
         memset(addr_buffer, 0, sizeof(addr_buffer));
         memset(&addr, 0, sizeof(addr));
-        memset(&overlapped, 0, sizeof(overlapped));
+        memset(&ole, 0, sizeof(ole));
     }
     ~ListenerObject() {
         if (listen_fd != INVALID_SOCKET) {
@@ -64,7 +64,6 @@ TcpListener::TcpListener(AcceptorHandler *service)
     , _AcceptEx(nullptr)
     , _GetAcceptExSockAddrs(nullptr) {
     RAPTOR_LIST_INIT(&_head);
-    memset(&_exit, 0, sizeof(_exit));
 }
 
 TcpListener::~TcpListener() {
@@ -74,7 +73,7 @@ TcpListener::~TcpListener() {
 raptor_error TcpListener::Init(int threads) {
     if (!_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("TcpListener is already running");
 
-    _poll_thread   = std::make_shared<PollingThread>(this);
+    _poll_thread = std::make_shared<PollingThread>(this);
     raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpListener: Failed to init poll thread, %s", e->ToString().c_str());
@@ -105,7 +104,7 @@ void TcpListener::Shutdown() {
         list_entry *entry = _head.next;
         while (entry != &_head) {
             auto obj = reinterpret_cast<ListenerObject *>(entry);
-            entry    = entry->next;
+            entry = entry->next;
             delete obj;
         }
         RAPTOR_LIST_INIT(&_head);
@@ -134,39 +133,40 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     }
 
     int port = 0;
-    e        = raptor_tcp_server_prepare_socket(listen_fd, &mapped_addr, &port, 1);
+    e = raptor_tcp_server_prepare_socket(listen_fd, &mapped_addr, &port, 1);
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpListener: Failed to configure socket: %s", e->ToString().c_str());
         return e;
     }
 
     _mutex.Lock();
-    std::unique_ptr<ListenerObject> node(new ListenerObject);
+    struct ListenerObject *node = new ListenerObject;
     node->listen_fd = listen_fd;
-    node->port      = port;
-    node->mode      = mode;
-    node->addr      = mapped_addr;
-    if (!_poll_thread->Add(node->listen_fd, node.get())) {
-        _mutex.Unlock();
-        return RAPTOR_ERROR_FROM_STATIC_STRING("Failed to bind iocp");
-    }
-    e = StartAcceptEx(node.get());
+    node->port = port;
+    node->mode = mode;
+    node->addr = mapped_addr;
+    node->ole.event_type = internal::kAcceptEvent;
+    node->ole.HandleId = 9527;
+    raptor_list_push_back(&_head, &node->entry);
+    _poll_thread->Add(node->listen_fd, node);
+    _mutex.Unlock();
+
+    e = StartAcceptEx(node);
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpListener: Failed to StartAcceptEx, %s", e->ToString().c_str());
+        _mutex.Lock();
+        raptor_list_remove_entry(&node->entry);
+        delete node;
         _mutex.Unlock();
         return e;
     }
 
-    raptor_list_push_back(&_head, &node->entry);
-    node.release();
-    _mutex.Unlock();
-
     char *addr_string = nullptr;
     raptor_sockaddr_to_string(&addr_string, &mapped_addr, 0);
-    log_debug("TcpListener: start listening on %s",
-              addr_string ? addr_string : std::to_string(node->port).c_str());
+    log_info("TcpListener: start listening on %s",
+             addr_string ? addr_string : std::to_string(node->port).c_str());
     if (addr_string) free(addr_string);
-    return e;
+    return RAPTOR_ERROR_NONE;
 }
 
 raptor_error TcpListener::GetExtensionFunction(SOCKET fd) {
@@ -180,7 +180,7 @@ raptor_error TcpListener::GetExtensionFunction(SOCKET fd) {
                           sizeof(_AcceptEx), &NumberofBytes, NULL, NULL);
 
         if (status != 0) {
-            _AcceptEx      = NULL;
+            _AcceptEx = NULL;
             raptor_error e = RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "WSAIoctl");
             log_error("TcpListener: Failed to get AcceptEx: %s", e->ToString().c_str());
             return e;
@@ -189,13 +189,13 @@ raptor_error TcpListener::GetExtensionFunction(SOCKET fd) {
 
     if (!_GetAcceptExSockAddrs) {
         GUID guid = WSAID_GETACCEPTEXSOCKADDRS;
-        status    = WSAIoctl(fd, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid),
+        status = WSAIoctl(fd, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid),
                           &_GetAcceptExSockAddrs, sizeof(_GetAcceptExSockAddrs), &NumberofBytes,
                           NULL, NULL);
 
         if (status != 0) {
             _GetAcceptExSockAddrs = NULL;
-            raptor_error e        = RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "WSAIoctl");
+            raptor_error e = RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "WSAIoctl");
             log_error("TcpListener: Failed to get GetAcceptexSockAddrs: %s", e->ToString().c_str());
             return e;
         }
@@ -206,6 +206,9 @@ raptor_error TcpListener::GetExtensionFunction(SOCKET fd) {
 void TcpListener::OnTimeoutCheck(int64_t) {}
 
 void TcpListener::OnEventProcess(EventDetail *detail) {
+    RAPTOR_ASSERT(detail->event_type == internal::kErrorEvent ||
+                  detail->event_type == internal::kAcceptEvent);
+
     auto CompletionKey = reinterpret_cast<ListenerObject *>(detail->ptr);
 
     raptor_resolved_address client;
@@ -220,7 +223,7 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
     ProcessProperty(CompletionKey->new_socket, property);
 
     CompletionKey->new_socket = INVALID_SOCKET;
-    raptor_error e            = StartAcceptEx(CompletionKey);
+    raptor_error e = StartAcceptEx(CompletionKey);
 
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpListener: Failed to StartAcceptEx for next fd, %s", e->ToString().c_str());
@@ -229,10 +232,10 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
 }
 
 raptor_error TcpListener::StartAcceptEx(struct ListenerObject *sp) {
-    BOOL success         = false;
-    DWORD addrlen        = sizeof(raptor_sockaddr_in6) + 16;
+    BOOL success = false;
+    DWORD addrlen = sizeof(raptor_sockaddr_in6) + 16;
     DWORD bytes_received = 0;
-    raptor_error error   = RAPTOR_ERROR_NONE;
+    raptor_error error = RAPTOR_ERROR_NONE;
     SOCKET sock;
 
     sock = WSASocket(((raptor_sockaddr *)sp->addr.addr)->sa_family, SOCK_STREAM, IPPROTO_TCP, NULL,
@@ -246,9 +249,11 @@ raptor_error TcpListener::StartAcceptEx(struct ListenerObject *sp) {
     error = raptor_tcp_prepare_socket(sock, 0);
     if (error != RAPTOR_ERROR_NONE) goto failure;
 
+    sp->new_socket = sock;
+
     /* Start the "accept" asynchronously. */
     success = _AcceptEx(sp->listen_fd, sock, sp->addr_buffer, 0, addrlen, addrlen, &bytes_received,
-                        &sp->overlapped);
+                        &sp->ole.overlapped);
 
     /* It is possible to get an accept immediately without delay. However, we
         will still get an IOCP notification for it. So let's just ignore it. */
@@ -261,23 +266,23 @@ raptor_error TcpListener::StartAcceptEx(struct ListenerObject *sp) {
     }
 
     // We're ready to do the accept.
-    sp->new_socket = sock;
     return RAPTOR_ERROR_NONE;
 
 failure:
     if (sock != INVALID_SOCKET) {
         closesocket(sock);
     }
+    sp->new_socket = INVALID_SOCKET;
     return error;
 }
 
 void TcpListener::ParsingNewConnectionAddress(const ListenerObject *sp,
                                               raptor_resolved_address *client) {
 
-    raptor_sockaddr *local  = NULL;
+    raptor_sockaddr *local = NULL;
     raptor_sockaddr *remote = NULL;
 
-    int local_addr_len  = sizeof(raptor_sockaddr_in6) + 16;
+    int local_addr_len = sizeof(raptor_sockaddr_in6) + 16;
     int remote_addr_len = sizeof(raptor_sockaddr_in6) + 16;
 
     _GetAcceptExSockAddrs((void *)sp->addr_buffer, 0, sizeof(raptor_sockaddr_in6) + 16,

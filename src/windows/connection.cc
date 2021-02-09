@@ -56,7 +56,7 @@ Connection::Connection(std::shared_ptr<EndpointImpl> obj)
 Connection::~Connection() {}
 
 bool Connection::Init(internal::NotificationTransferService *service, PollingThread *iocp_thread) {
-    _service      = service;
+    _service = service;
     _send_pending = false;
     iocp_thread->Add(static_cast<SOCKET>(_endpoint->_fd),
                      reinterpret_cast<void *>(_endpoint->_connection_id));
@@ -74,7 +74,7 @@ void Connection::Shutdown(bool notify, const Event &ev) {
 
     raptor_set_socket_shutdown((SOCKET)_endpoint->_fd);
     _endpoint->_fd = static_cast<uint64_t>(INVALID_SOCKET);
-    _send_pending  = false;
+    _send_pending = false;
 
     if (notify) {
         _service->OnClosed(_endpoint, ev);
@@ -107,7 +107,7 @@ bool Connection::AsyncSend() {
 
     WSABUF buffers[MAX_WSABUF_COUNT];
     size_t prepare_send_size = 0;
-    DWORD counter            = 0;
+    DWORD counter = 0;
 
     _send_pending = true;
 
@@ -167,25 +167,23 @@ bool Connection::IsOnline() {
 }
 
 raptor_error Connection::DoRecvEvent(EventDetail *detail) {
-    uint32_t size      = detail->transferred_bytes;
-    uint32_t handle_id = detail->handle_id;
-    if (OnSendEvent(size, handle_id)) {
-        return RAPTOR_ERROR_NONE;
-    }
-
-    return RAPTOR_WINDOWS_ERROR(WSAGetLastError(),
-                                "Connection:OnSendEvent, connection may be closed");
-}
-
-raptor_error Connection::DoSendEvent(EventDetail *detail) {
-    uint32_t size      = detail->transferred_bytes;
+    uint32_t size = detail->transferred_bytes;
     uint32_t handle_id = detail->handle_id;
     if (OnRecvEvent(size, handle_id)) {
         return RAPTOR_ERROR_NONE;
     }
 
-    return RAPTOR_WINDOWS_ERROR(WSAGetLastError(),
-                                "Connection:OnRecvEvent, connection may be closed");
+    return RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "Connection:OnRecvEvent");
+}
+
+raptor_error Connection::DoSendEvent(EventDetail *detail) {
+    uint32_t size = detail->transferred_bytes;
+    uint32_t handle_id = detail->handle_id;
+    if (OnSendEvent(size, handle_id)) {
+        return RAPTOR_ERROR_NONE;
+    }
+
+    return RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "Connection:OnSendEvent");
 }
 
 // IOCP Event
@@ -213,7 +211,7 @@ bool Connection::OnRecvEvent(size_t size, uint32_t handle_id) {
     AutoMutex g(&_rcv_mtx);
     do {
         char buff[8192] = {0};
-        int recv_bytes  = ::recv((SOCKET)_endpoint->_fd, buff, sizeof(buff), 0);
+        int recv_bytes = ::recv((SOCKET)_endpoint->_fd, buff, sizeof(buff), 0);
         if (recv_bytes == 0) return false;
         if (recv_bytes < 0) {
             int err = WSAGetLastError();
@@ -246,13 +244,13 @@ bool Connection::ReadSliceFromRecvBuffer(size_t read_size, Slice &s) {
 }
 
 int Connection::ParsingProtocol() {
-    size_t cache_size            = _rcv_buffer.GetBufferLength();
+    size_t cache_size = _rcv_buffer.GetBufferLength();
     constexpr size_t header_size = 1024;
-    int package_counter          = 0;
+    int package_counter = 0;
 
     while (cache_size > 0) {
         size_t read_size = header_size;
-        int pack_len     = 0;
+        int pack_len = 0;
         Slice package;
         do {
             bool reach_tail = ReadSliceFromRecvBuffer(read_size, package);

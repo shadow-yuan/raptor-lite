@@ -113,20 +113,7 @@ void PollingThread::WorkThread(void *) {
         bool ret = _iocp.polling(&NumberOfBytesTransferred, (PULONG_PTR)&CompletionKey,
                                  &lpOverlapped, 1000);
 
-        // shutdown signal
-        if (lpOverlapped == &_exit) {
-            break;
-        }
-
-        EventDetail detail;
-        detail.error_code = 0;
-        detail.event_type = 0;
-        detail.ptr = CompletionKey;
-        detail.transferred_bytes = NumberOfBytesTransferred;
-        detail.handle_id = 0;
-
         if (!ret) {
-
             /*
                 If theGetQueuedCompletionStatus function succeeds, it dequeued a completion
                 packet for a successful I/O operation from the completion port and has
@@ -149,15 +136,31 @@ void PollingThread::WorkThread(void *) {
 
             if (lpOverlapped != NULL && CompletionKey != NULL) {
                 // Maybe an error occurred or the connection was closed
-                detail.event_type = internal::kErrorEvent;
+                EventDetail detail;
                 detail.error_code = WSAGetLastError();
+                detail.event_type = internal::kErrorEvent;
+                detail.ptr = CompletionKey;
+                detail.transferred_bytes = NumberOfBytesTransferred;
+                detail.handle_id = 0;
                 _service->OnEventProcess(&detail);
+            } else {
+                // IOCP TIMEOUT
             }
             continue;
         }
 
+        // shutdown signal
+        if (lpOverlapped == &_exit) {
+            break;
+        }
+
         OverLappedEx *olex = (OverLappedEx *)lpOverlapped;
+
+        EventDetail detail;
+        detail.error_code = 0;
         detail.event_type = olex->event_type;
+        detail.ptr = CompletionKey;
+        detail.transferred_bytes = NumberOfBytesTransferred;
         detail.handle_id = olex->HandleId;
         _service->OnEventProcess(&detail);
     }

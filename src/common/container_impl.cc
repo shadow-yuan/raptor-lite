@@ -264,7 +264,7 @@ void ContainerImpl::OnErrorEvent(uint32_t index, EventDetail *ptr) {
     raptor_error err = MakeRefCounted<Status>(ptr->error_code, "ContainerImpl:OnErrorEvent");
     auto con = GetConnection(index);
     if (con) {
-        log_warn("ContainerImpl:OnErrorEvent index = %u", index);
+        // log_warn("ContainerImpl:OnErrorEvent index = %u", index);
         con->Shutdown(true, Event(kSocketError, err));
         DeleteConnection(index);
     }
@@ -282,7 +282,7 @@ void ContainerImpl::OnRecvEvent(uint32_t index, EventDetail *ptr) {
 
     con->Shutdown(true, Event(kSocketError, err));
     DeleteConnection(index);
-    log_error("ContainerImpl: Failed to DoRecvEvent");
+    // log_error("ContainerImpl: Failed to DoRecvEvent");
 }
 
 void ContainerImpl::OnSendEvent(uint32_t index, EventDetail *ptr) {
@@ -297,7 +297,7 @@ void ContainerImpl::OnSendEvent(uint32_t index, EventDetail *ptr) {
 
     con->Shutdown(true, Event(kSocketError, err));
     DeleteConnection(index);
-    log_error("ContainerImpl: Failed to DoSendEvent");
+    // log_error("ContainerImpl: Failed to DoSendEvent");
 }
 
 void ContainerImpl::OnEventProcess(EventDetail *detail) {

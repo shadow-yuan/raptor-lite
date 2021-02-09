@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <iostream>
+#include <sstream>
 
 #include "raptor-lite/raptor-lite.h"
 
@@ -13,20 +14,24 @@ public:
 
     void OnAccept(const raptor::Endpoint &ep, raptor::Property &settings) {
         settings({{"SocketRecvTimeoutMs", 5000}, {"SocketSendTimeoutMs", 5000}});
-        std::cout << "OnAccept:" << ep.PeerString() << std::endl;
-        std::cout << "  fd: " << ep.SocketFd() << std::endl;
-        std::cout << "  RemoteIp: " << ep.RemoteIp() << std::endl;
-        std::cout << "  RemotePort: " << ep.RemotePort() << std::endl;
-        std::cout << "  LocalIp: " << ep.LocalIp() << std::endl;
-        std::cout << "  LocalPort: " << ep.LocalPort() << std::endl;
-        std::cout << "  ConnectionId: " << ep.ConnectionId() << std::endl;
+        std::stringstream ss;
+        ss << "OnAccept:" << ep.PeerString() << std::endl;
+        ss << "  fd: " << ep.SocketFd() << std::endl;
+        ss << "  RemoteIp: " << ep.RemoteIp() << std::endl;
+        ss << "  RemotePort: " << ep.RemotePort() << std::endl;
+        ss << "  LocalIp: " << ep.LocalIp() << std::endl;
+        ss << "  LocalPort: " << ep.LocalPort() << std::endl;
+        ss << "  ConnectionId: " << ep.ConnectionId() << std::endl;
+        log_debug("%s", ss.str().c_str());
         container->AttachEndpoint(ep);
     }
 
     int OnMessage(const raptor::Endpoint &ep, const raptor::Slice &msg) {
-        std::cout << "OnMessage:\n"
-                  << "peer:" << ep.PeerString() << "\nmsg:" << msg.ToString() << std::endl;
+        std::stringstream ss;
+        ss << "OnMessage:\n"
+           << "peer:" << ep.PeerString() << "\nmsg:" << msg.ToString() << std::endl;
 
+        log_debug("%s", ss.str().c_str());
         std::string str = "Reply:" + msg.ToString();
         ep.SendMsg(str);
         return 0;
@@ -38,11 +43,10 @@ public:
         static int i = 0;
         if (current == 0) {
             current = GetCurrentMilliseconds();
-            std::cout << "OnHeartbeat:  fd = " << ep.SocketFd() << std::endl;
+            log_debug("OnHeartbeat:  fd = %lld", ep.SocketFd());
         } else {
             int64_t now = GetCurrentMilliseconds();
-            std::cout << "OnHeartbeat:  fd = " << ep.SocketFd() << ", interval = " << now - current
-                      << std::endl;
+            log_debug("OnHeartbeat:  fd = %lld, interval = %lld", ep.SocketFd(), now - current);
             current = now;
         }
         ep.SendMsg("This is a server heart-beat message!i:" + std::to_string(i++));
@@ -54,15 +58,17 @@ public:
     }
 
     void OnClosed(const raptor::Endpoint &ep, const raptor::Event &event) {
-        std::cout << "OnClosed:" << ep.PeerString() << std::endl;
-        std::cout << "  fd: " << ep.SocketFd() << std::endl;
-        std::cout << "  RemoteIp: " << ep.RemoteIp() << std::endl;
-        std::cout << "  RemotePort: " << ep.RemotePort() << std::endl;
-        std::cout << "  LocalIp: " << ep.LocalIp() << std::endl;
-        std::cout << "  LocalPort: " << ep.LocalPort() << std::endl;
-        std::cout << "  ConnectionId: " << ep.ConnectionId() << std::endl;
-        std::cout << "  Event: \n"
-                  << "    type: " << event.Type() << "    What: " << event.What() << std::endl;
+        std::stringstream ss;
+        ss << "OnClosed:" << ep.PeerString() << std::endl;
+        ss << "  fd: " << ep.SocketFd() << std::endl;
+        ss << "  RemoteIp: " << ep.RemoteIp() << std::endl;
+        ss << "  RemotePort: " << ep.RemotePort() << std::endl;
+        ss << "  LocalIp: " << ep.LocalIp() << std::endl;
+        ss << "  LocalPort: " << ep.LocalPort() << std::endl;
+        ss << "  ConnectionId: " << ep.ConnectionId() << std::endl;
+        ss << "  Event: \n    type: " << event.Type() << "    error_code: " << event.ErrorCode()
+           << std::endl;
+        log_debug("%s", ss.str().c_str());
     }
 
     void init() {
@@ -73,12 +79,12 @@ public:
 
         raptor_error err = raptor::CreateContainer(p, &container);
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to create container: " << err->ToString() << std::endl;
+            log_error("Failed to create container: %s", err->ToString().c_str());
             abort();
         }
         err = raptor::CreateAcceptor(p, &acceptor);
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to create acceptor: " << err->ToString() << std::endl;
+            log_error("Failed to create acceptor: %s", err->ToString().c_str());
             abort();
         }
     }
@@ -86,17 +92,17 @@ public:
     void start_and_listening(const std::string &addr) {
         raptor_error err = acceptor->Start();
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to Start: " << err->ToString() << std::endl;
+            log_error("Failed to Start: %s", err->ToString().c_str());
             return;
         }
         err = container->Start();
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to Start: " << err->ToString() << std::endl;
+            log_error("Failed to Start: %s", err->ToString().c_str());
             return;
         }
         err = acceptor->AddListening(addr);
         if (err != RAPTOR_ERROR_NONE) {
-            std::cout << "Failed to Listening: " << err->ToString() << std::endl;
+            log_error("Failed to Listening: %s", err->ToString().c_str());
             return;
         }
     }
@@ -122,8 +128,8 @@ TcpServerTest::~TcpServerTest() {
 }
 
 int main() {
+    printf(" ---- prepare start server ---- \n");
     RaptorGlobalStartup();
-    std::cout << " ---- prepare start server ---- " << std::endl;
     TcpServerTest server;
     server.init();
     server.start_and_listening("localhost:50051");

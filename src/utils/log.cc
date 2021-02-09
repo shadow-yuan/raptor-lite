@@ -32,9 +32,16 @@
 
 #include "raptor-lite/utils/atomic.h"
 #include "raptor-lite/utils/color.h"
+#include "raptor-lite/utils/mpscq.h"
+#include "raptor-lite/utils/thread.h"
 #include "raptor-lite/utils/time.h"
+#include "src/utils/string.h"
 
 namespace raptor {
+struct LogMsgNode {
+    MultiProducerSingleConsumerQueue::Node node;
+    LogArgument args;
+};
 namespace {
 
 void log_default_print(LogArgument *args);
@@ -44,13 +51,18 @@ AtomicIntptr g_min_level((intptr_t)LogLevel::kDebug);
 char g_level_char[static_cast<int>(LogLevel::kDisable)] = {'D', 'I', 'W', 'E'};
 Color g_fc_table[static_cast<int>(LogLevel::kDisable)] = {Cyan, Green, Yellow, Red};
 Color g_bc_table[static_cast<int>(LogLevel::kDisable)] = {Black, Black, Black, White};
+MultiProducerSingleConsumerQueue g_mpscq;
+Thread g_thd;
+bool g_shutdown = true;
 
 #ifdef _WIN32
 static __declspec(thread) unsigned long tls_tid = 0;
 constexpr char delimiter = '\\';
+#define RAPTOR_LOG_FORMAT "[%s.%06d %5lu %c] %s (%s:%d)"
 #else
 static __thread unsigned long tls_tid = 0;
 constexpr char delimiter = '/';
+#define RAPTOR_LOG_FORMAT "[%s.%06d %7lu %c] %s (%s:%d)"
 #endif
 
 void log_default_print(LogArgument *args) {
@@ -97,16 +109,23 @@ void log_default_print(LogArgument *args) {
     Color fc = g_fc_table[static_cast<int>(args->level)];
     Color bc = g_bc_table[static_cast<int>(args->level)];
 
-    SetConsoleColor(stderr, fc, bc);
-
-    fprintf(stderr, "[%s.%06d %7lu %c] %s (%s:%d)", time_buffer,
-            now.tv_usec,  // microseconds
-            tls_tid, g_level_char[static_cast<int>(args->level)], args->message, display_file,
-            args->line);
-
-    ResetConsoleColor(stderr);
-
-    fprintf(stderr, "\n");
+    size_t msg_size = strlen(args->message) + strlen(display_file) + 128;
+    if (msg_size >= 2048) {
+        char *output_text = NULL;
+        raptor_asprintf(&output_text, RAPTOR_LOG_FORMAT, time_buffer,
+                        now.tv_usec,  // microseconds
+                        tls_tid, g_level_char[static_cast<int>(args->level)], args->message,
+                        display_file, args->line);
+        FprintColorTextLine(stderr, fc, bc, output_text);
+        free(output_text);
+    } else {
+        char buff[2048] = {0};
+        snprintf(buff, sizeof(buff), RAPTOR_LOG_FORMAT, time_buffer,
+                 now.tv_usec,  // microseconds
+                 tls_tid, g_level_char[static_cast<int>(args->level)], args->message, display_file,
+                 args->line);
+        FprintColorTextLine(stderr, fc, bc, buff);
+    }
 
     fflush(stderr);
 }
@@ -148,13 +167,52 @@ void LogFormatPrint(const char *file, int line, LogLevel level, const char *form
 #endif
 
     if (g_min_level.Load() <= static_cast<intptr_t>(level)) {
-        LogArgument tmp;
-        tmp.file = file;
-        tmp.line = line;
-        tmp.level = level;
-        tmp.message = message;
-        ((LogPrintCallback)g_log_function.Load())(&tmp);
+        LogMsgNode *msg = new LogMsgNode;
+        msg->args.file = file;
+        msg->args.line = line;
+        msg->args.level = level;
+        msg->args.message = message;
+        //((LogPrintCallback)g_log_function.Load())(&tmp);
+        g_mpscq.push(&msg->node);
     }
-    free(message);
+    // free(message);
+}
+
+void LogThreadProc(void *) {
+    while (!g_shutdown) {
+        auto n = g_mpscq.pop();
+        if (n != nullptr) {
+            LogMsgNode *msg = reinterpret_cast<LogMsgNode *>(n);
+            ((LogPrintCallback)g_log_function.Load())(&msg->args);
+            free(const_cast<char *>(msg->args.message));
+            delete msg;
+        }
+    }
+}
+
+void LogStartup() {
+    if (!g_shutdown) return;
+    g_thd = Thread("log:thread", LogThreadProc, nullptr);
+    g_shutdown = false;
+    g_thd.Start();
+}
+
+void LogCleanup() {
+    if (!g_shutdown) {
+        g_shutdown = true;
+        g_thd.Join();
+
+        // clear message queue
+        bool empty = true;
+        do {
+            auto n = g_mpscq.PopAndCheckEnd(&empty);
+            if (n != nullptr) {
+                auto msg = reinterpret_cast<LogMsgNode *>(n);
+                //_count.FetchSub(1, MemoryOrder::RELAXED);
+                free(const_cast<char *>(msg->args.message));
+                delete msg;
+            }
+        } while (!empty);
+    }
 }
 }  // namespace raptor

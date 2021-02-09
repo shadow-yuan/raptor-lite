@@ -28,6 +28,8 @@ enum Color { Default = 0, Black, Red, Green, Yellow, Blue, Magenta, Cyan, White 
 // f = stdout, stderror
 void SetConsoleColor(FILE *f, Color foreground, Color background);
 void ResetConsoleColor(FILE *f = stderr);
+void FprintColorTextLine(FILE *f, Color foreground, Color background, const char *text);
+
 }  // namespace raptor
 
 #endif  // __RAPTOR_LITE_UTILS_COLOR__

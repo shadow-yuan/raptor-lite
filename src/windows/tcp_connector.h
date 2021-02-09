@@ -23,6 +23,7 @@
 #include <string>
 
 #include "raptor-lite/impl/property.h"
+#include "raptor-lite/utils/atomic.h"
 #include "raptor-lite/utils/sync.h"
 #include "src/common/resolve_address.h"
 #include "src/common/sockaddr.h"
@@ -54,7 +55,7 @@ private:
     LPFN_CONNECTEX _connectex;
 
     int _tcp_user_timeout_ms;
-    OVERLAPPED _exit;
+    AtomicInt32 _counter;
 
     Mutex _mtex;
     std::set<intptr_t> _records;

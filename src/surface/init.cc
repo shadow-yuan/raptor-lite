@@ -20,6 +20,7 @@
 #include "raptor-lite/utils/log.h"
 
 int RaptorGlobalStartup() {
+    raptor::LogStartup();
 #ifdef _WIN32
     WSADATA wsaData;
     int status = WSAStartup(MAKEWORD(2, 0), &wsaData);
@@ -33,6 +34,7 @@ int RaptorGlobalStartup() {
 }
 
 int RaptorGlobalCleanup() {
+    raptor::LogCleanup();
 #ifdef _WIN32
     return WSACleanup();
 #else

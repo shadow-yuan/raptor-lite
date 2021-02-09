@@ -284,7 +284,7 @@ int raptor_sockaddr_get_ip(const raptor_resolved_address *resolved_addr, char *d
             }
             free(host_with_scope);
         } else {
-            ret = strlen(ntop_buf);
+            ret = static_cast<int>(strlen(ntop_buf));
             memcpy(dst, ntop_buf, ret);
         }
         return ret;
