@@ -1,7 +1,7 @@
 # Property
 关于 raptor-lite 中出现的各种 Property 的细节说明
 
-## 主要对象
+## 对象属性
 ### Acceptor
 ```c++
 raptor_error CreateAcceptor(const Property &p, Acceptor **out);
@@ -50,38 +50,30 @@ raptor::Property property{
 raptor_error err = raptor::CreateContainer(property, &container);
 ```
 
-## 事件接口
-### AcceptorHandler
+## 连接属性
+使用 AcceptorHandler 和 ConnectorHandler 时会用到
+|      名称       |   约束   | 说明 |
+| --------------- | -------- |-----------------------------------|
+| SocketNoSIGPIPE    | optional | 是否禁用 SIGPIPE, 默认为 true|
+| SocketReuseAddress | optional | SOCKET 选项 SO_REUSEADDR, 默认为true|
+| SocketRecvTimeoutMs| optional | SOCKET 选项 SO_RCVTIMEO, int 类型 |
+| SocketSendTimeoutMs| optional | SOCKET 选项 SO_SNDTIMEO, int 类型 |
+| SocketLowLatency   | optional | SOCKET 选项 TCP_NODELAY, 默认为true|
+| SocketNonBlocking  | optional | 设置是否非阻塞模式, 默认为true|
+
 ```c++
 class AcceptorHandler {
 public:
     virtual ~AcceptorHandler() {}
     virtual void OnAccept(const Endpoint &ep, Property &settings) = 0;
 };
-```
-|      名称       |   约束   | 说明 |
-| --------------- | -------- |-----------------------------------|
-| SocketNoSIGPIPE    | optional | 是否禁用 SIGPIPE, 默认为 true|
-| SocketReuseAddress | optional | SOCKET 选项 SO_REUSEADDR, 默认为true|
-| SocketRecvTimeoutMs| optional | SOCKET 选项 SO_RCVTIMEO, int 类型 |
-| SocketSendTimeoutMs| optional | SOCKET 选项 SO_SNDTIMEO, int 类型 |
-| SocketLowLatency   | optional | SOCKET 选项 TCP_NODELAY, 默认为true|
 
-### ConnectorHandler
-```c++
 class ConnectorHandler {
 public:
     virtual ~ConnectorHandler() {}
     virtual void OnConnect(const Endpoint &ep, Property &settings) = 0;
 };
 ```
-|      名称       |   约束   | 说明 |
-| --------------- | -------- |-----------------------------------|
-| SocketNoSIGPIPE    | optional | 是否禁用 SIGPIPE, 默认为 true|
-| SocketReuseAddress | optional | SOCKET 选项 SO_REUSEADDR, 默认为true|
-| SocketRecvTimeoutMs| optional | SOCKET 选项 SO_RCVTIMEO, int 类型 |
-| SocketSendTimeoutMs| optional | SOCKET 选项 SO_SNDTIMEO, int 类型 |
-| SocketLowLatency   | optional | SOCKET 选项 TCP_NODELAY, 默认为true|
 
 示例: 当 `OnAccept` 或 `OnConnect` 被调用即表示成功建立了连接, 此时 `Endpoint` 中包含连接的信息, 通过修改`settings` 从而设置该连接的各种 SOCKET 属性.
 ```c++

@@ -209,9 +209,14 @@ bool Connection::OnRecvEvent(size_t size, uint32_t handle_id) {
     }
 
     AutoMutex g(&_rcv_mtx);
+    int recv_bytes = 0;
+    int unused_space = 0;
     do {
         char buff[8192] = {0};
-        int recv_bytes = ::recv((SOCKET)_endpoint->_fd, buff, sizeof(buff), 0);
+
+        unused_space = sizeof(buff);
+        recv_bytes = ::recv((SOCKET)_endpoint->_fd, buff, unused_space, 0);
+
         if (recv_bytes == 0) return false;
         if (recv_bytes < 0) {
             int err = WSAGetLastError();
@@ -228,7 +233,7 @@ bool Connection::OnRecvEvent(size_t size, uint32_t handle_id) {
             _service->OnDataReceived(_endpoint, Slice(buff, recv_bytes));
         }
 
-    } while (false);
+    } while (recv_bytes == unused_space);
 
     return AsyncRecv();
 }

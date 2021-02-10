@@ -105,10 +105,11 @@ raptor_error Connection::DoRecvEvent(EventDetail *detail) {
         _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id, flags);
         return RAPTOR_ERROR_NONE;
     }
-    return RAPTOR_POSIX_ERROR("Connection:OnRecv, peer may be closed");
+    return RAPTOR_POSIX_ERROR("Connection:OnRecv");
 }
 
 raptor_error Connection::DoSendEvent(EventDetail *detail) {
+    AutoMutex g(&_snd_mutex);
     int result = OnSend();
     if (result != -1 && !_snd_buffer.Empty()) {
         _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
@@ -157,7 +158,6 @@ int Connection::OnRecv() {
 }
 
 int Connection::OnSend() {
-    AutoMutex g(&_snd_mutex);
     if (_snd_buffer.Empty()) {
         return 0;
     }
