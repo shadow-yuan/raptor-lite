@@ -31,7 +31,7 @@ class EndpointImpl final : public std::enable_shared_from_this<EndpointImpl> {
     friend class Connection;
 
 public:
-    EndpointImpl(uint64_t fd, raptor_resolved_address *addr);
+    EndpointImpl(uint64_t fd, raptor_resolved_address *local, raptor_resolved_address *remote);
     ~EndpointImpl();
 
     void SetConnection(uint64_t connection_id);
@@ -42,6 +42,7 @@ public:
         return this->shared_from_this();
     }
 
+    // If attached to the container, it returns a valid value.
     uint64_t ConnectionId() const;
 
     // don't close it
@@ -77,9 +78,10 @@ private:
     uint64_t _fd;
     uint64_t _connection_id;
     Container *_container;
-    uint16_t _listen_port;
+    uint16_t _listen_port;  // for server
     uintptr_t _ext_info;
-    raptor_resolved_address _address;
+    raptor_resolved_address _local_addr;
+    raptor_resolved_address _remote_addr;
 };
 
 }  // namespace raptor

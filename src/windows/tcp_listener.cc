@@ -35,12 +35,14 @@ struct ListenInformation {
     int listen_port;
     int count;
     SOCKET listen_fd;
-    Mutex mutex;  // for list_entry
+    raptor_resolved_address addr;  // for acceptex
+    Mutex mutex;                   // for list
     ListenInformation() {
         RAPTOR_LIST_INIT(&head);
         listen_port = 0;
         count = 0;
         listen_fd = INVALID_SOCKET;
+        memset(&addr, 0, sizeof(addr));
     }
     ~ListenInformation() {
         if (listen_fd != INVALID_SOCKET) {
@@ -54,14 +56,12 @@ struct AcceptObject {
     SOCKET new_socket;
     raptor_dualstack_mode mode;
     uint8_t addr_buffer[(sizeof(raptor_sockaddr_in6) + 16) * 2];
-    raptor_resolved_address addr;  // for acceptex
     OverLappedEx olex;
     AcceptObject() {
         RAPTOR_LIST_ENTRY_INIT(&entry);
         new_socket = INVALID_SOCKET;
         mode = RAPTOR_DSMODE_NONE;
         memset(addr_buffer, 0, sizeof(addr_buffer));
-        memset(&addr, 0, sizeof(addr));
         memset(&olex, 0, sizeof(olex));
     }
     ~AcceptObject() {
@@ -163,6 +163,7 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     ListenInformation *info = new ListenInformation();
     info->listen_fd = listen_fd;
     info->listen_port = port;
+    memcpy(&info->addr, &mapped_addr, sizeof(mapped_addr));
     _heads.emplace_back(info);
     _poll_thread->Add(listen_fd, info);
     _mutex.Unlock();
@@ -171,12 +172,11 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     for (size_t i = 0; i < _threads + 1; i++) {
         struct AcceptObject *node = new AcceptObject;
         node->mode = mode;
-        memcpy(&node->addr, &mapped_addr, sizeof(mapped_addr));
         node->olex.event_type = internal::kAcceptEvent;
         node->olex.HandleId = AcceptBaseHandleId + static_cast<uint32_t>(index);
         raptor_list_push_back(&info->head, &node->entry);
 
-        e = StartAcceptEx(listen_fd, node);
+        e = StartAcceptEx(listen_fd, &info->addr, node);
         if (e != RAPTOR_ERROR_NONE) {
             log_error("TcpListener: Failed to StartAcceptEx, %s", e->ToString().c_str());
             raptor_list_remove_entry(&node->entry);
@@ -249,7 +249,7 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
     memset(&client, 0, sizeof(client));
     ParsingNewConnectionAddress(object, &client);
 
-    auto ep = std::make_shared<EndpointImpl>(object->new_socket, &client);
+    auto ep = std::make_shared<EndpointImpl>(object->new_socket, &info->addr, &client);
     ep->SetListenPort(static_cast<uint16_t>(info->listen_port));
 
     Property property;
@@ -257,7 +257,7 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
     ProcessProperty(object->new_socket, property);
 
     object->new_socket = INVALID_SOCKET;
-    raptor_error e = StartAcceptEx(info->listen_fd, object);
+    raptor_error e = StartAcceptEx(info->listen_fd, &info->addr, object);
 
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpListener: Failed to StartAcceptEx for next fd, %s", e->ToString().c_str());
@@ -265,15 +265,16 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
     }
 }
 
-raptor_error TcpListener::StartAcceptEx(SOCKET listen_fd, struct AcceptObject *sp) {
+raptor_error TcpListener::StartAcceptEx(SOCKET listen_fd, raptor_resolved_address *addr,
+                                        struct AcceptObject *sp) {
     BOOL success = false;
     DWORD addrlen = sizeof(raptor_sockaddr_in6) + 16;
     DWORD bytes_received = 0;
     raptor_error error = RAPTOR_ERROR_NONE;
     SOCKET sock;
 
-    sock = WSASocket(((raptor_sockaddr *)sp->addr.addr)->sa_family, SOCK_STREAM, IPPROTO_TCP, NULL,
-                     0, RAPTOR_WSA_SOCKET_FLAGS);
+    sock = WSASocket(((raptor_sockaddr *)addr->addr)->sa_family, SOCK_STREAM, IPPROTO_TCP, NULL, 0,
+                     RAPTOR_WSA_SOCKET_FLAGS);
 
     if (sock == INVALID_SOCKET) {
         error = RAPTOR_WINDOWS_ERROR(WSAGetLastError(), "WSASocket");
@@ -323,6 +324,12 @@ void TcpListener::ParsingNewConnectionAddress(const AcceptObject *sp,
                           sizeof(raptor_sockaddr_in6) + 16, &local, &local_addr_len, &remote,
                           &remote_addr_len);
 
+    /*
+    if (local != nullptr) {
+        server->len = local_addr_len;
+        memcpy(server->addr, local, local_addr_len);
+    }
+    */
     if (remote != nullptr) {
         client->len = remote_addr_len;
         memcpy(client->addr, remote, remote_addr_len);

@@ -36,6 +36,8 @@ public:
     Endpoint(std::shared_ptr<EndpointImpl> impl = nullptr);
     ~Endpoint();
 
+    // If attached to the container, it returns
+    // a valid value, otherwise it returns 0 .
     uint64_t ConnectionId() const;
 
     // Do not close fd externally

@@ -45,7 +45,7 @@ raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpConnector is already running");
     }
 
-    _poll_thread   = std::make_shared<PollingThread>(this);
+    _poll_thread = std::make_shared<PollingThread>(this);
     raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpConnector: Failed to init poll thread, %s", e->ToString().c_str());
@@ -124,7 +124,7 @@ raptor_error TcpConnector::AsyncConnect(const raptor_resolved_address *addr, int
 
     _mtex.Lock();
     auto entry = new struct async_connect_record_entry;
-    entry->fd  = sock_fd;
+    entry->fd = sock_fd;
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
     _poll_thread->Add(sock_fd, (void *)entry, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
@@ -144,8 +144,14 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
     struct async_connect_record_entry *entry =
         reinterpret_cast<struct async_connect_record_entry *>(detail->ptr);
 
+    // get local address
+    raptor_resolved_address local;
+    local.len = sizeof(local.addr);
+    memset(local.addr, 0, local.len);
+    getsockname(entry->fd, (struct sockaddr *)local.addr, (socklen_t *)&local.len);
+
     std::shared_ptr<EndpointImpl> endpoint =
-        std::make_shared<EndpointImpl>(entry->fd, &entry->addr);
+        std::make_shared<EndpointImpl>(entry->fd, &local, &entry->addr);
 
     _poll_thread->Delete(entry->fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
 
@@ -156,7 +162,7 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
             ProcessProperty(entry->fd, property);
         }
     } else {
-        int error_code   = raptor_get_socket_error(entry->fd);
+        int error_code = raptor_get_socket_error(entry->fd);
         raptor_error err = MakeRefCounted<Status>(error_code, "getsockopt(SO_ERROR)");
         _handler->OnErrorOccurred(endpoint, err);
         close(entry->fd);

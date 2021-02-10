@@ -53,8 +53,9 @@ private:
     void OnEventProcess(EventDetail *detail) override;
     void OnTimeoutCheck(int64_t current_millseconds) override;
 
-    raptor_error StartAcceptEx(SOCKET listen_fd, struct AcceptObject *);
-    void ParsingNewConnectionAddress(const AcceptObject *sp, raptor_resolved_address *remote);
+    raptor_error StartAcceptEx(SOCKET listen_fd, raptor_resolved_address *addr,
+                               struct AcceptObject *sp);
+    void ParsingNewConnectionAddress(const AcceptObject *sp, raptor_resolved_address *client);
 
     raptor_error GetExtensionFunction(SOCKET fd);
     void ProcessProperty(SOCKET fd, const Property &p);

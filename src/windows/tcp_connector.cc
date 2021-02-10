@@ -117,8 +117,14 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
 
     auto CompletionKey = reinterpret_cast<struct async_connect_record_entry *>(detail->ptr);
 
+    // get local address
+    raptor_resolved_address local;
+    local.len = sizeof(local.addr);
+    memset(local.addr, 0, local.len);
+    getsockname(CompletionKey->fd, (struct sockaddr *)local.addr, (int *)&local.len);
+
     std::shared_ptr<EndpointImpl> endpoint =
-        std::make_shared<EndpointImpl>(CompletionKey->fd, &CompletionKey->addr);
+        std::make_shared<EndpointImpl>(CompletionKey->fd, &local, &CompletionKey->addr);
 
     if (detail->event_type & internal::kErrorEvent) {
         // Maybe an error occurred or the connection was closed

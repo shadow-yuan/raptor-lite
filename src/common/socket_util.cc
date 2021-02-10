@@ -291,13 +291,3 @@ int raptor_sockaddr_get_ip(const raptor_resolved_address *resolved_addr, char *d
     }
     return 0;
 }
-
-int raptor_get_local_sockaddr(uint64_t fd, raptor_resolved_address *local) {
-    local->len = sizeof(local->addr);
-    memset(local->addr, 0, local->len);
-#ifdef _WIN32
-    return getsockname((SOCKET)fd, (struct sockaddr *)local->addr, (int *)&local->len);
-#else
-    return getsockname((int)fd, (struct sockaddr *)local->addr, (socklen_t *)&local->len);
-#endif
-}

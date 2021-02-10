@@ -53,7 +53,7 @@ RefCountedPtr<Status> TcpListener::Init(int threads) {
     if (!_shutdown) {
         return RAPTOR_ERROR_FROM_STATIC_STRING("TcpAcceptor is already running");
     }
-    _poll_thread   = std::make_shared<PollingThread>(this);
+    _poll_thread = std::make_shared<PollingThread>(this);
     raptor_error e = _poll_thread->Init(threads, 1);
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpListener: Failed to init poll thread, %s", e->ToString().c_str());
@@ -84,7 +84,7 @@ void TcpListener::Shutdown() {
         list_entry *entry = _head.next;
         while (entry != &_head) {
             auto obj = reinterpret_cast<ListenerObject *>(entry);
-            entry    = entry->next;
+            entry = entry->next;
 
             close(obj->listen_fd);
             delete obj;
@@ -115,10 +115,10 @@ RefCountedPtr<Status> TcpListener::AddListeningPort(const raptor_resolved_addres
     ListenerObject *node = new ListenerObject;
     raptor_list_push_back(&_head, &node->entry);
 
-    node->addr      = *addr;
+    node->addr = *addr;
     node->listen_fd = listen_fd;
-    node->port      = port;
-    node->mode      = mode;
+    node->port = port;
+    node->mode = mode;
 
     _poll_thread->Add(node->listen_fd, node, EPOLLIN);
     _mtex.Unlock();
@@ -139,7 +139,9 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
         raptor_resolved_address client;
         int sock_fd = AcceptEx(sp->listen_fd, &client, 1, 1);
         if (sock_fd > 0) {
-            std::shared_ptr<EndpointImpl> obj = std::make_shared<EndpointImpl>(sock_fd, &client);
+            std::shared_ptr<EndpointImpl> obj =
+                std::make_shared<EndpointImpl>(sock_fd, &sp->addr, &client);
+
             obj->SetListenPort(sp->port);
             Property property;
             _handler->OnAccept(obj, property);

@@ -31,13 +31,15 @@
 
 namespace raptor {
 
-EndpointImpl::EndpointImpl(uint64_t fd, raptor_resolved_address *addr)
+EndpointImpl::EndpointImpl(uint64_t fd, raptor_resolved_address *local,
+                           raptor_resolved_address *remote)
     : _fd(fd)
     , _connection_id(core::InvalidConnectionId)
     , _container(nullptr) {
     _listen_port = 0;
-    _ext_info    = 0;
-    memcpy(&_address, addr, sizeof(raptor_resolved_address));
+    _ext_info = 0;
+    memcpy(&_local_addr, local, sizeof(raptor_resolved_address));
+    memcpy(&_remote_addr, remote, sizeof(raptor_resolved_address));
 }
 
 EndpointImpl::~EndpointImpl() {}
@@ -67,7 +69,7 @@ uint16_t EndpointImpl::GetListenPort() const {
 
 std::string EndpointImpl::PeerString() const {
     char *ptr = nullptr;
-    int ret   = raptor_sockaddr_to_string(&ptr, &_address, 1);
+    int ret = raptor_sockaddr_to_string(&ptr, &_remote_addr, 1);
     if (ptr) {
         std::string peer(ptr, ret);
         free(ptr);
@@ -125,35 +127,23 @@ bool EndpointImpl::Close(bool notify) {
 }
 
 std::string EndpointImpl::LocalIp() const {
-    raptor_resolved_address local;
-    int ret = raptor_get_local_sockaddr(_fd, &local);
-    if (ret != 0) {
-        return std::string();
-    }
-
     char ip[128] = {0};
-    ret          = raptor_sockaddr_get_ip(&local, ip, sizeof(ip));
+    int ret = raptor_sockaddr_get_ip(&_local_addr, ip, sizeof(ip));
     return std::string(ip, ret);
 }
 
 uint16_t EndpointImpl::LocalPort() const {
-    raptor_resolved_address local;
-    int ret = raptor_get_local_sockaddr(_fd, &local);
-    if (ret != 0) {
-        return 0;
-    }
-
-    return static_cast<uint16_t>(raptor_sockaddr_get_port(&local));
+    return static_cast<uint16_t>(raptor_sockaddr_get_port(&_local_addr));
 }
 
 std::string EndpointImpl::RemoteIp() const {
     char ip[128] = {0};
-    int ret      = raptor_sockaddr_get_ip(&_address, ip, sizeof(ip));
+    int ret = raptor_sockaddr_get_ip(&_remote_addr, ip, sizeof(ip));
     return std::string(ip, ret);
 }
 
 uint16_t EndpointImpl::RemotePort() const {
-    return static_cast<uint16_t>(raptor_sockaddr_get_port(&_address));
+    return static_cast<uint16_t>(raptor_sockaddr_get_port(&_remote_addr));
 }
 
 bool EndpointImpl::IsOnline() const {
