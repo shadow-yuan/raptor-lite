@@ -140,6 +140,7 @@ void PollingThread::WorkThread(void *) {
                 detail.error_code = WSAGetLastError();
                 detail.event_type = internal::kErrorEvent;
                 detail.ptr = CompletionKey;
+                detail.overlaped = lpOverlapped;
                 detail.transferred_bytes = NumberOfBytesTransferred;
                 detail.handle_id = 0;
                 _service->OnEventProcess(&detail);
@@ -160,6 +161,7 @@ void PollingThread::WorkThread(void *) {
         detail.error_code = 0;
         detail.event_type = olex->event_type;
         detail.ptr = CompletionKey;
+        detail.overlaped = lpOverlapped;
         detail.transferred_bytes = NumberOfBytesTransferred;
         detail.handle_id = olex->HandleId;
         _service->OnEventProcess(&detail);

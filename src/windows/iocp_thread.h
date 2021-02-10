@@ -39,6 +39,7 @@ struct EventDetail {
     int error_code;
     uint32_t transferred_bytes;
     uint32_t handle_id;
+    OVERLAPPED *overlaped;
 };
 
 class PollingThread {

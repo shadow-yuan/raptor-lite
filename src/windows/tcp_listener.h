@@ -19,8 +19,12 @@
 #ifndef __RAPTOR_CORE_WINDOWS_TCP_LISTENER__
 #define __RAPTOR_CORE_WINDOWS_TCP_LISTENER__
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "raptor-lite/utils/list_entry.h"
 #include "raptor-lite/utils/sync.h"
@@ -31,7 +35,8 @@
 
 namespace raptor {
 class AcceptorHandler;
-struct ListenerObject;
+struct AcceptObject;
+struct ListenInformation;
 class Property;
 
 class TcpListener final : public internal::EventReceivingService {
@@ -48,8 +53,8 @@ private:
     void OnEventProcess(EventDetail *detail) override;
     void OnTimeoutCheck(int64_t current_millseconds) override;
 
-    raptor_error StartAcceptEx(struct ListenerObject *);
-    void ParsingNewConnectionAddress(const ListenerObject *sp, raptor_resolved_address *remote);
+    raptor_error StartAcceptEx(SOCKET listen_fd, struct AcceptObject *);
+    void ParsingNewConnectionAddress(const AcceptObject *sp, raptor_resolved_address *remote);
 
     raptor_error GetExtensionFunction(SOCKET fd);
     void ProcessProperty(SOCKET fd, const Property &p);
@@ -59,10 +64,11 @@ private:
 
     LPFN_ACCEPTEX _AcceptEx;
     LPFN_GETACCEPTEXSOCKADDRS _GetAcceptExSockAddrs;
+    int _threads;
 
-    list_entry _head;
+    Mutex _mutex;  // for _heads
+    std::vector<ListenInformation *> _heads;
 
-    Mutex _mutex;  // for list_entry
     std::shared_ptr<PollingThread> _poll_thread;
 };
 
