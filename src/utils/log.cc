@@ -142,6 +142,7 @@ void LogSetPrintCallback(LogPrintCallback func) {
 }
 
 void LogFormatPrint(const char *file, int line, LogLevel level, const char *format, ...) {
+    if (g_shutdown) return;
 
     char *message = NULL;
     va_list args;
@@ -199,6 +200,8 @@ void LogStartup() {
 
 void LogCleanup() {
     if (!g_shutdown) {
+        printf("Log: prepare to shutdown\n");
+
         g_shutdown = true;
         g_thd.Join();
 
@@ -208,11 +211,11 @@ void LogCleanup() {
             auto n = g_mpscq.PopAndCheckEnd(&empty);
             if (n != nullptr) {
                 auto msg = reinterpret_cast<LogMsgNode *>(n);
-                //_count.FetchSub(1, MemoryOrder::RELAXED);
                 free(const_cast<char *>(msg->args.message));
                 delete msg;
             }
         } while (!empty);
+        printf("Log: shutdown\n");
     }
 }
 }  // namespace raptor

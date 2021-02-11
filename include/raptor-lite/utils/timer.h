@@ -23,6 +23,7 @@
 #include <map>
 
 #include "raptor-lite/utils/mpscq.h"
+#include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/thread.h"
 
 namespace raptor {
@@ -37,7 +38,7 @@ public:
     explicit Timer(TimerHandler *p);
     ~Timer();
 
-    void Init();
+    raptor_error Init();
     void Start();
     void Shutdown();
 

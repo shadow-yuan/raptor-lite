@@ -91,6 +91,7 @@ void TcpListener::Shutdown() {
         }
         RAPTOR_LIST_INIT(&_head);
         _mtex.Unlock();
+        log_warn("TcpListener: shutdown");
     }
 }
 

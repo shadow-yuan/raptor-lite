@@ -67,9 +67,7 @@ ContainerImpl::ContainerImpl(ContainerImpl::Option *option)
 }
 
 ContainerImpl::~ContainerImpl() {
-    if (!_shutdown) {
-        Shutdown();
-    }
+    Shutdown();
 }
 
 raptor_error ContainerImpl::Init() {
@@ -85,7 +83,13 @@ raptor_error ContainerImpl::Init() {
     _poll_thread->EnableTimeoutCheck(!_option.not_check_connection_timeout);
     if (_option.heartbeat_handler && _option.heartbeat_handler->GetHeartbeatInterval() > 0) {
         _timer_thread = std::make_shared<Timer>(this);
-        _timer_thread->Init();
+        e = _timer_thread->Init();
+        if (e != RAPTOR_ERROR_NONE) {
+            log_error("ContainerImpl: Failed to init timer thread, %s", e->ToString().c_str());
+            return e;
+        }
+    } else {
+        log_debug("ContainerImpl: Skip timeout timer creation");
     }
 
     _shutdown = false;
@@ -145,13 +149,14 @@ raptor_error ContainerImpl::Start() {
 
 void ContainerImpl::Shutdown() {
     if (!_shutdown) {
+        log_warn("ContainerImpl: prepare to shutdown");
         _shutdown = true;
 
         _poll_thread->Shutdown();
         if (_timer_thread) {
             _timer_thread->Shutdown();
         }
-        _cv.Signal();
+        _cv.Broadcast();
 
         for (int i = 0; i < _running_threads; i++) {
             _mq_threads[i].Join();
@@ -179,6 +184,7 @@ void ContainerImpl::Shutdown() {
                 delete msg;
             }
         } while (!empty);
+        log_warn("ContainerImpl: shutdown");
     }
 }
 

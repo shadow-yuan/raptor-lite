@@ -66,7 +66,7 @@ int Endpoint::SyncRecv(void *data, size_t len) const {
     return _impl->SyncRecv(data, len);
 }
 
-void Endpoint::Close(bool notify) {
+void Endpoint::Close(bool notify) const {
     _impl->Close(notify);
 }
 

@@ -43,13 +43,18 @@ Timer::Timer(TimerHandler *p)
 
 Timer::~Timer() {}
 
-void Timer::Init() {
-    if (!_shutdown) return;
+raptor_error Timer::Init() {
+    if (!_shutdown) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("Timer is already running");
+    }
     _shutdown = false;
     bool success = false;
     _thd = Thread("timer", std::bind(&Timer::WorkThread, this, std::placeholders::_1), nullptr,
                   &success);
-    assert(success);
+    if (!success) {
+        return RAPTOR_ERROR_FROM_STATIC_STRING("Timer: Failed to create timer thread");
+    }
+    return RAPTOR_ERROR_NONE;
 }
 
 void Timer::Start() {
@@ -74,6 +79,7 @@ void Timer::Shutdown() {
 }
 
 void Timer::SetTimer(uint32_t tid1, uint32_t tid2, uint32_t delay_ms) {
+    if (_shutdown) return;
     auto tn = new TimerNode;
     tn->dead_line = GetCurrentMilliseconds() + delay_ms;
     tn->tid = uint64_t(tid1) << 32 | tid2;

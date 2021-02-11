@@ -58,7 +58,7 @@ public:
     int SyncRecv(void *data, size_t len) const;
     int SyncSend(const void *data, size_t len) const;
 
-    void Close(bool notify = false);
+    void Close(bool notify = false) const;
 
     std::string LocalIp() const;
     uint16_t LocalPort() const;

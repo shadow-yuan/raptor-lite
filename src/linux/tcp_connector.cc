@@ -80,6 +80,7 @@ void TcpConnector::Shutdown() {
             close(entry->fd);
         }
         _records.clear();
+        log_warn("TcpConnector: shutdown");
     }
 }
 

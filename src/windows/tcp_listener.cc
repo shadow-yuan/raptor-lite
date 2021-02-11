@@ -127,6 +127,7 @@ void TcpListener::Shutdown() {
             delete info;
         }
         _heads.clear();
+        log_warn("TcpListener: shutdown");
     }
 }
 
