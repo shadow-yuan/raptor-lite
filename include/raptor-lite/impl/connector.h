@@ -34,6 +34,7 @@ public:
 
     /*
      * settings property:
+     *   0. UserCustomValue     (intptr_t, default:0)
      *   1. SocketNoSIGPIPE     (bool, default:true)
      *   2. SocketReuseAddress  (bool, default:true)
      *   3. SocketRecvTimeoutMs (int, millseconds)
@@ -41,16 +42,18 @@ public:
      *   5. SocketLowLatency    (bool, default:true)
      *   6. SocketNonBlocking   (book, default:true)
      */
-    virtual void OnConnect(const Endpoint &ep, Property &settings)      = 0;
+    virtual void OnConnect(const Endpoint &ep, Property &settings) = 0;
     virtual void OnErrorOccurred(const Endpoint &ep, raptor_error desc) = 0;
 };
 
 class Connector {
 public:
     virtual ~Connector() {}
-    virtual raptor_error Start()                          = 0;
-    virtual void Shutdown()                               = 0;
-    virtual raptor_error Connect(const std::string &addr) = 0;
+    virtual raptor_error Start() = 0;
+    virtual void Shutdown() = 0;
+
+    // @param user will be passed through OnConnect function(ConnectorHandler).
+    virtual raptor_error Connect(const std::string &addr, intptr_t user = 0) = 0;
 };
 
 /*

@@ -200,7 +200,6 @@ void LogStartup() {
 
 void LogCleanup() {
     if (!g_shutdown) {
-        printf("Log: prepare to shutdown\n");
 
         g_shutdown = true;
         g_thd.Join();
@@ -215,7 +214,6 @@ void LogCleanup() {
                 delete msg;
             }
         } while (!empty);
-        printf("Log: shutdown\n");
     }
 }
 }  // namespace raptor

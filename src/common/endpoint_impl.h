@@ -54,7 +54,7 @@ public:
     // Give the endpoint to the container management.
     // It means that the data receiving and sending work
     // is handed over to the container to complete.
-    void BindWithContainer(Container *container);
+    void BindWithContainer(Container *container, bool notify);
 
     bool SendMsg(const Slice &slice);
     bool SendMsg(const void *data, size_t len);

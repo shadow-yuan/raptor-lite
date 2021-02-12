@@ -48,7 +48,8 @@ public:
     explicit Connection(std::shared_ptr<EndpointImpl> obj);
     ~Connection();
 
-    void Init(internal::NotificationTransferService *service, PollingThread *t);
+    void Init(internal::NotificationTransferService *service, PollingThread *t,
+              PollingThread *back);
     void SetProtocol(ProtocolHandler *p);
     bool SendMsg(const void *data, size_t data_len);
     void Shutdown(bool notify, const Event &ev = Event());
@@ -78,7 +79,8 @@ private:
 private:
     internal::NotificationTransferService *_service;
     ProtocolHandler *_proto;
-    PollingThread *_epoll_thread;
+    PollingThread *_recv_thread;
+    PollingThread *_send_thread;
 
     SliceBuffer _rcv_buffer;
     SliceBuffer _snd_buffer;

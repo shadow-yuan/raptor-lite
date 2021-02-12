@@ -55,6 +55,7 @@ public:
         ProtocolHandler *proto_handler        = nullptr;
         HeartbeatHandler *heartbeat_handler   = nullptr;
         EndpointClosedHandler *closed_handler = nullptr;
+        EndpointNotifyHandler *notify_handler = nullptr;
     } Option;
 
     explicit ContainerImpl(ContainerImpl::Option *option);
@@ -63,7 +64,7 @@ public:
     raptor_error Init();
     raptor_error Start() override;
     void Shutdown() override;
-    raptor_error AttachEndpoint(const Endpoint &ep) override;
+    raptor_error AttachEndpoint(const Endpoint &ep, bool notify = false) override;
     bool SendMsg(const Endpoint &ep, const void *data, size_t len) override;
     void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
@@ -88,6 +89,8 @@ private:
     void OnErrorEvent(uint32_t index, EventDetail *ptr);
     void OnRecvEvent(uint32_t index, EventDetail *ptr);
     void OnSendEvent(uint32_t index, EventDetail *ptr);
+    void OnNotify(const Endpoint &ep);
+    raptor_error AttachEndpointImpl(const Endpoint &ep);
 
 private:
     using TimeoutRecordMap = std::multimap<int64_t, uint32_t>;
@@ -104,6 +107,9 @@ private:
     int _running_threads;
 
     std::shared_ptr<PollingThread> _poll_thread;
+#ifndef _WIN32
+    std::shared_ptr<PollingThread> _back_thread;
+#endif
     std::shared_ptr<Timer> _timer_thread;
 
     Mutex _conn_mtx;

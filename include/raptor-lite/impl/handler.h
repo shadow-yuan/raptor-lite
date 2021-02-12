@@ -57,5 +57,13 @@ public:
     virtual void OnClosed(const Endpoint &ep, const Event &event) = 0;
 };
 
+// Only when the container set EndpointNotifyHandler and notify is
+// true when AttachEndpoint, the container will notify the external.
+class EndpointNotifyHandler {
+public:
+    virtual ~EndpointNotifyHandler() {}
+    virtual void OnNotify(const Endpoint &ep) = 0;
+};
+
 }  // namespace raptor
 #endif  // __RAPTOR_LITE_HANDLER__

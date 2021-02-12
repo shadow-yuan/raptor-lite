@@ -28,6 +28,7 @@
 namespace raptor {
 struct async_connect_record_entry {
     int fd;
+    intptr_t user_value;
     raptor_resolved_address addr;
 };
 
@@ -84,7 +85,7 @@ void TcpConnector::Shutdown() {
     }
 }
 
-raptor_error TcpConnector::Connect(const std::string &addr) {
+raptor_error TcpConnector::Connect(const std::string &addr, intptr_t user) {
     raptor_resolved_addresses *addrs;
     auto e = raptor_blocking_resolve_address(addr.c_str(), nullptr, &addrs);
     if (e != RAPTOR_ERROR_NONE) {
@@ -96,7 +97,7 @@ raptor_error TcpConnector::Connect(const std::string &addr) {
         return e;
     }
 
-    e = AsyncConnect(&addrs->addrs[0], _tcp_user_timeout_ms);
+    e = AsyncConnect(&addrs->addrs[0], user, _tcp_user_timeout_ms);
     if (e != RAPTOR_ERROR_NONE) {
         log_warn("TcpConnector: Failed to connect %s, %s", addr.c_str(), e->ToString().c_str());
     }
@@ -104,7 +105,8 @@ raptor_error TcpConnector::Connect(const std::string &addr) {
     return e;
 }
 
-raptor_error TcpConnector::AsyncConnect(const raptor_resolved_address *addr, int timeout_ms) {
+raptor_error TcpConnector::AsyncConnect(const raptor_resolved_address *addr, intptr_t user,
+                                        int timeout_ms) {
     raptor_resolved_address mapped_addr;
     int sock_fd = -1;
 
@@ -126,6 +128,7 @@ raptor_error TcpConnector::AsyncConnect(const raptor_resolved_address *addr, int
     _mtex.Lock();
     auto entry = new struct async_connect_record_entry;
     entry->fd = sock_fd;
+    entry->user_value = user;
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
     _poll_thread->Add(sock_fd, (void *)entry, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
@@ -157,7 +160,7 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
     _poll_thread->Delete(entry->fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
 
     if (detail->event_type & internal::kSendEvent) {
-        Property property;
+        Property property({"UserCustomValue", entry->user_value});
         _handler->OnConnect(endpoint, property);
         if (endpoint->IsOnline()) {
             ProcessProperty(entry->fd, property);

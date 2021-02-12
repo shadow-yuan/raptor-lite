@@ -49,7 +49,7 @@ public:
     // Give the endpoint to the container management.
     // It means that the data receiving and sending work
     // is handed over to the container to complete.
-    void BindWithContainer(Container *container);
+    void BindWithContainer(Container *container, bool notify = false) const;
 
     bool SendMsg(const Slice &slice) const;
     bool SendMsg(const void *data, size_t len) const;
@@ -66,7 +66,7 @@ public:
     uint16_t RemotePort() const;
 
     bool IsOnline() const;
-    void SetExtInfo(uintptr_t info);
+    void SetExtInfo(uintptr_t info) const;
     uintptr_t GetExtInfo() const;
 
 private:

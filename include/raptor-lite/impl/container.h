@@ -32,17 +32,21 @@ public:
     virtual ~Container() {}
     virtual raptor_error Start() = 0;
     virtual void Shutdown() = 0;
-    virtual raptor_error AttachEndpoint(const Endpoint &ep) = 0;
+
+    // The container will notify the outside only when
+    // EndpointNotifyHandler is not nullptr and notify is true.
+    virtual raptor_error AttachEndpoint(const Endpoint &ep, bool notify = false) = 0;
     virtual bool SendMsg(const Endpoint &ep, const void *data, size_t len) = 0;
     virtual void CloseEndpoint(const Endpoint &ep, bool event_notify = false) = 0;
 };
 
 /*
  * Property:
- *   1. ProtocolHandler            (optional)
+ *   0. EndpointNotifyHandler      (optional, default: nullptr)
+ *   1. ProtocolHandler            (optional, default: nullptr)
  *   2. MessageHandler             (required)
- *   3. HeartbeatHandler           (optional)
- *   4. EndpointClosedHandler      (optional)
+ *   3. HeartbeatHandler           (optional, default: nullptr)
+ *   4. EndpointClosedHandler      (optional, default: nullptr)
  *   5. RecvSendThreads            (optional, default: 1)
  *   6. DefaultContainerSize       (optional, default: 256)
  *   7. MaxContainerSize           (optional, default: 1048576)

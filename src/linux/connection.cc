@@ -40,20 +40,25 @@ AtomicUInt32 Connection::global_counter(0);
 Connection::Connection(std::shared_ptr<EndpointImpl> obj)
     : _service(nullptr)
     , _proto(nullptr)
-    , _epoll_thread(nullptr) {
+    , _recv_thread(nullptr)
+    , _send_thread(nullptr) {
 
     _handle_id = global_counter.FetchAdd(1, MemoryOrder::RELAXED);
     _endpoint = obj;
 }
 
-Connection::~Connection() {}
+Connection::~Connection() {
+    Shutdown(false);
+}
 
-void Connection::Init(internal::NotificationTransferService *service, PollingThread *t) {
+void Connection::Init(internal::NotificationTransferService *service, PollingThread *t,
+                      PollingThread *back) {
     _service = service;
-    _epoll_thread = t;
+    _recv_thread = t;
+    _send_thread = back;
 
-    _epoll_thread->Add((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                       EPOLLIN | EPOLLET | EPOLLONESHOT);
+    _recv_thread->Add((int)_endpoint->_fd, (void *)_endpoint->_connection_id, EPOLLIN | EPOLLET);
+    _send_thread->Add((int)_endpoint->_fd, (void *)_endpoint->_connection_id, EPOLLOUT | EPOLLET);
 }
 
 void Connection::SetProtocol(ProtocolHandler *p) {
@@ -64,8 +69,8 @@ bool Connection::SendMsg(const void *data, size_t data_len) {
     if (!_endpoint->IsOnline()) return false;
     AutoMutex g(&_snd_mutex);
     _snd_buffer.AddSlice(Slice(data, data_len));
-    _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                          EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
+    _send_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
+                         EPOLLOUT | EPOLLET);
     return true;
 }
 
@@ -74,7 +79,10 @@ void Connection::Shutdown(bool notify, const Event &ev) {
         return;
     }
 
-    _epoll_thread->Delete((int)_endpoint->_fd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
+    _recv_thread->Delete((int)_endpoint->_fd, EPOLLIN | EPOLLET);
+    _send_thread->Delete((int)_endpoint->_fd, EPOLLOUT | EPOLLET);
+    int fd = static_cast<int>(_endpoint->_fd);
+
     raptor_set_socket_shutdown((int)_endpoint->_fd);
     _endpoint->_fd = uint64_t(~0);
 
@@ -83,10 +91,18 @@ void Connection::Shutdown(bool notify, const Event &ev) {
     }
 
     _rcv_mutex.Lock();
+    if (!_rcv_buffer.Empty()) {
+        log_error("Fd:%d have %lu bytes in rcv_buffer not been processed and will be discarded", fd,
+                  _rcv_buffer.GetBufferLength());
+    }
     _rcv_buffer.ClearBuffer();
     _rcv_mutex.Unlock();
 
     _snd_mutex.Lock();
+    if (!_snd_buffer.Empty()) {
+        log_error("Fd:%d have %lu bytes in snd_buffer not been processed and will be discarded", fd,
+                  _snd_buffer.GetBufferLength());
+    }
     _snd_buffer.ClearBuffer();
     _snd_mutex.Unlock();
 }
@@ -98,25 +114,18 @@ bool Connection::IsOnline() {
 raptor_error Connection::DoRecvEvent(EventDetail *detail) {
     int result = OnRecv();
     if (result == 0) {
-        int flags = EPOLLIN | EPOLLET | EPOLLONESHOT;
-        if (!_snd_buffer.Empty()) {
-            flags |= EPOLLOUT;
-        }
-        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id, flags);
+        _recv_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
+                             EPOLLIN | EPOLLET);
         return RAPTOR_ERROR_NONE;
     }
     return RAPTOR_POSIX_ERROR("Connection:OnRecv");
 }
 
 raptor_error Connection::DoSendEvent(EventDetail *detail) {
-    AutoMutex g(&_snd_mutex);
     int result = OnSend();
-    if (result != -1 && !_snd_buffer.Empty()) {
-        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                              EPOLLIN | EPOLLOUT | EPOLLET | EPOLLONESHOT);
-    } else {
-        _epoll_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
-                              EPOLLIN | EPOLLET | EPOLLONESHOT);
+    if (result == -1) {
+        _send_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
+                             EPOLLOUT | EPOLLET);
     }
     return RAPTOR_ERROR_NONE;
 }
@@ -158,6 +167,7 @@ int Connection::OnRecv() {
 }
 
 int Connection::OnSend() {
+    AutoMutex g(&_snd_mutex);
     if (_snd_buffer.Empty()) {
         return 0;
     }
@@ -169,16 +179,15 @@ int Connection::OnSend() {
         int slen = ::send((int)_endpoint->_fd, slice.begin(), slice.size(), 0);
 
         if (slen == 0) {
-            return -1;
+            break;
         }
 
         if (slen < 0) {
             if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN) {
-                return 1;
+                return -1;
             }
-            return -1;
+            break;
         }
-
         _snd_buffer.MoveHeader((size_t)slen);
         count = _snd_buffer.SliceCount();
 

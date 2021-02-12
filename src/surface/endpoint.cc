@@ -42,8 +42,8 @@ std::string Endpoint::PeerString() const {
     return _impl->PeerString();
 }
 
-void Endpoint::BindWithContainer(Container *container) {
-    _impl->BindWithContainer(container);
+void Endpoint::BindWithContainer(Container *container, bool notify) const {
+    _impl->BindWithContainer(container, notify);
 }
 
 bool Endpoint::SendMsg(const Slice &slice) const {
@@ -88,7 +88,7 @@ uint16_t Endpoint::RemotePort() const {
 bool Endpoint::IsOnline() const {
     return _impl->IsOnline();
 }
-void Endpoint::SetExtInfo(uintptr_t info) {
+void Endpoint::SetExtInfo(uintptr_t info) const {
     _impl->SetExtInfo(info);
 }
 uintptr_t Endpoint::GetExtInfo() const {

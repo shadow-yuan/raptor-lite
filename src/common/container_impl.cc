@@ -39,11 +39,7 @@
 #endif
 
 namespace raptor {
-enum TcpMessageType {
-    kRecvAMessage,
-    kCloseEvent,
-    kHeartbeatEvent,
-};
+enum TcpMessageType { kRecvAMessage, kCloseEvent, kHeartbeatEvent, kEndpointNotify };
 
 struct TcpMessageNode {
     MultiProducerSingleConsumerQueue::Node node;
@@ -72,13 +68,33 @@ ContainerImpl::~ContainerImpl() {
 
 raptor_error ContainerImpl::Init() {
     if (!_shutdown) return RAPTOR_ERROR_FROM_STATIC_STRING("tcp server already running");
+    raptor_error e = RAPTOR_ERROR_NONE;
+
+#ifndef _WIN32
+    size_t real_thread = _option.recv_send_threads / 2;
+    if (real_thread == 0) real_thread = 1;
 
     _poll_thread = std::make_shared<PollingThread>(this);
-    raptor_error e = _poll_thread->Init(_option.recv_send_threads);
+    e = _poll_thread->Init(real_thread);
     if (e != RAPTOR_ERROR_NONE) {
         log_error("ContainerImpl: Failed to init poll thread, %s", e->ToString().c_str());
         return e;
     }
+    _back_thread = std::make_shared<PollingThread>(this);
+    e = _back_thread->Init(real_thread);
+    if (e != RAPTOR_ERROR_NONE) {
+        log_error("ContainerImpl: Failed to init poll(back) thread, %s", e->ToString().c_str());
+        return e;
+    }
+    _back_thread->EnableTimeoutCheck(false);
+#else
+    _poll_thread = std::make_shared<PollingThread>(this);
+    e = _poll_thread->Init(_option.recv_send_threads);
+    if (e != RAPTOR_ERROR_NONE) {
+        log_error("ContainerImpl: Failed to init poll thread, %s", e->ToString().c_str());
+        return e;
+    }
+#endif
 
     _poll_thread->EnableTimeoutCheck(!_option.not_check_connection_timeout);
     if (_option.heartbeat_handler && _option.heartbeat_handler->GetHeartbeatInterval() > 0) {
@@ -125,7 +141,7 @@ raptor_error ContainerImpl::Init() {
     int64_t n = GetCurrentMilliseconds();
     _magic_number = static_cast<uint16_t>(((n / 1000) >> 16) & 0xffff);
     _last_check_time.Store(n);
-    log_debug("ContainerImpl: initialization completed");
+    log_debug("ContainerImpl: Initialization completed");
     return RAPTOR_ERROR_NONE;
 }
 
@@ -135,7 +151,13 @@ raptor_error ContainerImpl::Start() {
         log_error("ContainerImpl: Failed to start poll thread");
         return RAPTOR_ERROR_FROM_STATIC_STRING("ContainerImpl: Failed to start poll thread");
     }
-
+#ifndef _WIN32
+    err = _back_thread->Start();
+    if (err != RAPTOR_ERROR_NONE) {
+        log_error("ContainerImpl: Failed to start poll(back) thread");
+        return RAPTOR_ERROR_FROM_STATIC_STRING("ContainerImpl: Failed to start poll thread");
+    }
+#endif
     for (int i = 0; i < _running_threads; i++) {
         _mq_threads[i].Start();
     }
@@ -153,6 +175,9 @@ void ContainerImpl::Shutdown() {
         _shutdown = true;
 
         _poll_thread->Shutdown();
+#ifndef _WIN32
+        _back_thread->Shutdown();
+#endif
         if (_timer_thread) {
             _timer_thread->Shutdown();
         }
@@ -215,7 +240,7 @@ void ContainerImpl::CloseEndpoint(const Endpoint &ep, bool event_notify) {
     return;
 }
 
-raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep) {
+raptor_error ContainerImpl::AttachEndpointImpl(const Endpoint &ep) {
     AutoMutex g(&_conn_mtx);
 
     if (_free_index_list.empty() && _mgr.size() >= _option.max_container_size) {
@@ -254,7 +279,11 @@ raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep) {
 
     _mgr[index].first = std::make_shared<Connection>(obj);
     _mgr[index].first->SetProtocol(_option.proto_handler);
+#ifdef _WIN32
     _mgr[index].first->Init(this, _poll_thread.get());
+#else
+    _mgr[index].first->Init(this, _poll_thread.get(), _back_thread.get());
+#endif
     _mgr[index].second = _timeout_records.insert({deadline_line, index});
 
     if (_timer_thread && _option.heartbeat_handler) {
@@ -263,6 +292,22 @@ raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep) {
         _timer_thread->SetTimer(index, handle_id, delay);
     }
     return RAPTOR_ERROR_NONE;
+}
+
+raptor_error ContainerImpl::AttachEndpoint(const Endpoint &ep, bool notify) {
+    raptor_error e = AttachEndpointImpl(ep);
+    if (e == RAPTOR_ERROR_NONE && notify && _option.notify_handler) {
+        OnNotify(ep);
+    }
+    return e;
+}
+
+void ContainerImpl::OnNotify(const Endpoint &ep) {
+    TcpMessageNode *msg = new TcpMessageNode(ep);
+    msg->type = TcpMessageType::kEndpointNotify;
+    _mpscq.push(&msg->node);
+    _count.FetchAdd(1, MemoryOrder::ACQ_REL);
+    _cv.Signal();
 }
 
 // Receiver implement (iocp / epoll event)
@@ -411,13 +456,13 @@ void ContainerImpl::MessageQueueThread(void *) {
         }
         auto n = _mpscq.pop();
         auto msg = reinterpret_cast<struct TcpMessageNode *>(n);
+        RaptorMutexUnlock(_mutex);
 
         if (msg != nullptr) {
             _count.FetchSub(1, MemoryOrder::RELAXED);
             this->Dispatch(msg);
             delete msg;
         }
-        RaptorMutexUnlock(_mutex);
     }
 }
 
@@ -431,6 +476,9 @@ void ContainerImpl::Dispatch(struct TcpMessageNode *msg) {
         break;
     case TcpMessageType::kHeartbeatEvent:
         _option.heartbeat_handler->OnHeartbeat(msg->ep);
+        break;
+    case TcpMessageType::kEndpointNotify:
+        _option.notify_handler->OnNotify(msg->ep);
         break;
     default:
         log_error("ContainerImpl: Dispatch found an unknow message type %d",

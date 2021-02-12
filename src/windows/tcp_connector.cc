@@ -32,6 +32,7 @@ struct async_connect_record_entry {
     OverLappedEx ole;
     raptor_resolved_address addr;
     SOCKET fd;
+    intptr_t user_value;
 };
 
 TcpConnector::TcpConnector(ConnectorHandler *handler)
@@ -89,7 +90,7 @@ void TcpConnector::Shutdown() {
     }
 }
 
-raptor_error TcpConnector::Connect(const std::string &addr) {
+raptor_error TcpConnector::Connect(const std::string &addr, intptr_t user) {
     raptor_resolved_addresses *addrs;
     auto e = raptor_blocking_resolve_address(addr.c_str(), nullptr, &addrs);
     if (e != RAPTOR_ERROR_NONE) {
@@ -101,7 +102,7 @@ raptor_error TcpConnector::Connect(const std::string &addr) {
         return e;
     }
 
-    e = InternalConnect(&addrs->addrs[0], _tcp_user_timeout_ms);
+    e = InternalConnect(&addrs->addrs[0], user, _tcp_user_timeout_ms);
     if (e != RAPTOR_ERROR_NONE) {
         log_warn("TcpConnector: Failed to connect %s, %s", addr.c_str(), e->ToString().c_str());
     }
@@ -134,7 +135,7 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
     } else {
         // update connect context
         setsockopt(CompletionKey->fd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
-        Property property;
+        Property property({"UserCustomValue", entry->user_value});
         _handler->OnConnect(endpoint, property);
         if (endpoint->IsOnline()) {
             ProcessProperty(CompletionKey->fd, property);
@@ -198,7 +199,7 @@ raptor_error TcpConnector::GetConnectExIfNecessary(SOCKET s) {
     return RAPTOR_ERROR_NONE;
 }
 
-raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr,
+raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr, intptr_t user,
                                            int timeout_millseconds) {
     raptor_dualstack_mode mode = RAPTOR_DSMODE_NONE;
     raptor_resolved_address local_address;
@@ -237,6 +238,7 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr,
 
     entry->ole.event_type = internal::kConnectEvent;
     entry->ole.HandleId = _counter.FetchAdd(1, MemoryOrder::RELAXED);
+    entry->user_value = user;
 
     _mtex.Lock();
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));

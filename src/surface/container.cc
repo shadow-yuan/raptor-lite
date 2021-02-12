@@ -34,7 +34,7 @@ public:
     raptor_error Init();
     raptor_error Start() override;
     void Shutdown() override;
-    raptor_error AttachEndpoint(const Endpoint &ep) override;
+    raptor_error AttachEndpoint(const Endpoint &ep, bool notify = false) override;
     bool SendMsg(const Endpoint &ep, const void *data, size_t len) override;
     void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
@@ -58,8 +58,8 @@ void ContainerAdaptor::Shutdown() {
     _impl->Shutdown();
 }
 
-raptor_error ContainerAdaptor::AttachEndpoint(const Endpoint &ep) {
-    return _impl->AttachEndpoint(ep);
+raptor_error ContainerAdaptor::AttachEndpoint(const Endpoint &ep, bool notify) {
+    return _impl->AttachEndpoint(ep, notify);
 }
 
 bool ContainerAdaptor::SendMsg(const Endpoint &ep, const void *data, size_t len) {
@@ -72,10 +72,11 @@ void ContainerAdaptor::CloseEndpoint(const Endpoint &ep, bool event_notify) {
 
 /*
  * Property:
- *   1. ProtocolHandler            (optional)
+ *   0. EndpointNotifyHandler      (optional, default: nullptr)
+ *   1. ProtocolHandler            (optional, default: nullptr)
  *   2. MessageHandler             (required)
- *   3. HeartbeatHandler           (optional)
- *   4. EndpointClosedHandler      (optional)
+ *   3. HeartbeatHandler           (optional, default: nullptr)
+ *   4. EndpointClosedHandler      (optional, default: nullptr)
  *   5. RecvSendThreads            (optional, default: 1)
  *   6. DefaultContainerSize       (optional, default: 256)
  *   7. MaxContainerSize           (optional, default: 1048576)
@@ -104,6 +105,9 @@ raptor_error CreateContainer(const Property &p, Container **out) {
 
     option.closed_handler =
         reinterpret_cast<EndpointClosedHandler *>(p.GetValue<intptr_t>("EndpointClosedHandler", 0));
+
+    option.notify_handler =
+        reinterpret_cast<EndpointNotifyHandler *>(p.GetValue<intptr_t>("EndpointNotifyHandler", 0));
 
     option.recv_send_threads            = p.GetValue("RecvSendThreads", 1);
     option.default_container_size       = p.GetValue("DefaultContainerSize", 256);

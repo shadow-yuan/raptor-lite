@@ -78,8 +78,8 @@ std::string EndpointImpl::PeerString() const {
     return std::string();
 }
 
-void EndpointImpl::BindWithContainer(Container *container) {
-    container->AttachEndpoint(GetEndpointImpl());
+void EndpointImpl::BindWithContainer(Container *container, bool notify) {
+    container->AttachEndpoint(GetEndpointImpl(), notify);
 }
 
 bool EndpointImpl::SendMsg(const Slice &slice) {

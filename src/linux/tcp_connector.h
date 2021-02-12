@@ -37,12 +37,12 @@ public:
     raptor_error Init(int threads = 1, int tcp_user_timeout_ms = 0);
     raptor_error Start();
     void Shutdown();
-    raptor_error Connect(const std::string &addr);
+    raptor_error Connect(const std::string &addr, intptr_t user);
 
 private:
     void OnEventProcess(EventDetail *detail) override;
     void OnTimeoutCheck(int64_t current_millseconds) override;
-    raptor_error AsyncConnect(const raptor_resolved_address *addr, int timeout_ms);
+    raptor_error AsyncConnect(const raptor_resolved_address *addr, intptr_t user, int timeout_ms);
     void ProcessProperty(int fd, const Property &p);
 
 private:

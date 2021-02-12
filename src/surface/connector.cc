@@ -36,7 +36,7 @@ public:
     raptor_error Init(int threads = 1, int timeoutms = 0);
     raptor_error Start() override;
     void Shutdown() override;
-    raptor_error Connect(const std::string &addr) override;
+    raptor_error Connect(const std::string &addr, intptr_t user = 0) override;
 
 private:
     std::unique_ptr<TcpConnector> _impl;
@@ -59,8 +59,8 @@ void ConnectorAdaptor::Shutdown() {
     _impl->Shutdown();
 }
 
-raptor_error ConnectorAdaptor::Connect(const std::string &addr) {
-    return _impl->Connect(addr);
+raptor_error ConnectorAdaptor::Connect(const std::string &addr, intptr_t user) {
+    return _impl->Connect(addr, user);
 }
 
 /*
@@ -73,7 +73,7 @@ raptor_error CreateConnector(const Property &p, Connector **out) {
     ConnectorHandler *handler =
         reinterpret_cast<ConnectorHandler *>(p.GetValue<intptr_t>("ConnectorHandler"));
 
-    int ConnecThreadNum  = p.GetValue("ConnecThreadNum", 1);
+    int ConnecThreadNum = p.GetValue("ConnecThreadNum", 1);
     int TcpUserTimeoutMs = p.GetValue("TcpUserTimeoutMs", 0);
 
     *out = nullptr;
@@ -83,7 +83,7 @@ raptor_error CreateConnector(const Property &p, Connector **out) {
     }
 
     ConnectorAdaptor *adaptor = new ConnectorAdaptor(handler);
-    raptor_error e            = adaptor->Init(ConnecThreadNum, TcpUserTimeoutMs);
+    raptor_error e = adaptor->Init(ConnecThreadNum, TcpUserTimeoutMs);
     if (e == RAPTOR_ERROR_NONE) {
         *out = adaptor;
     }
