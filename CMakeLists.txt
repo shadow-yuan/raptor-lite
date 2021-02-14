@@ -145,5 +145,7 @@ if(RAPTOR_BUILD_ALLTESTS)
     # Add unit test source files below
     raptor_test_func("${PROJECT_SOURCE_DIR}/example/tcp_client_test.cc")
     raptor_test_func("${PROJECT_SOURCE_DIR}/example/tcp_server_test.cc")
+    raptor_test_func("${PROJECT_SOURCE_DIR}/example/echo_client.cc")
+    raptor_test_func("${PROJECT_SOURCE_DIR}/example/echo_server.cc")
 
 endif(RAPTOR_BUILD_ALLTESTS)
