@@ -35,8 +35,11 @@ public:
 
     // The container will notify the outside only when
     // EndpointNotifyHandler is not nullptr and notify is true.
+    // If the Attach operation is successful, the endpoint will
+    // associate an uint64_t type connection id, the Endpoint
+    // call ConnectionId will get a valid value at this time.
     virtual raptor_error AttachEndpoint(const Endpoint &ep, bool notify = false) = 0;
-    virtual bool SendMsg(const Endpoint &ep, const void *data, size_t len) = 0;
+    virtual bool SendMsg(uint64_t connection_id, const Slice &s) = 0;
     virtual void CloseEndpoint(const Endpoint &ep, bool event_notify = false) = 0;
 };
 

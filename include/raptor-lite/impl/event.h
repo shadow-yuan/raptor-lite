@@ -51,6 +51,9 @@ public:
     }
 
     int ErrorCode() const {
+        if (_desc == RAPTOR_ERROR_NONE) {
+            return 0;
+        }
         return _desc->ErrorCode();
     }
 

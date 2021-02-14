@@ -65,7 +65,7 @@ public:
     raptor_error Start() override;
     void Shutdown() override;
     raptor_error AttachEndpoint(const Endpoint &ep, bool notify = false) override;
-    bool SendMsg(const Endpoint &ep, const void *data, size_t len) override;
+    bool SendMsg(uint64_t connection_id, const Slice &s) override;
     void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
     // internal::EventReceivingService implement

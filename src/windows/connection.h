@@ -54,7 +54,7 @@ public:
     void SetProtocol(ProtocolHandler *p);
     void Shutdown(bool notify, const Event &ev = Event());
 
-    bool SendMsg(const void *data, size_t data_len);
+    bool SendMsg(const Slice &s);
     bool IsOnline();
 
     void SetExtendInfo(uintptr_t data);

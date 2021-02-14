@@ -72,7 +72,11 @@ std::string Status::ToString() const {
     }
 
     char *text = nullptr;
-    raptor_asprintf(&text, "%s: error code is %d.", _message.begin(), _error_code);
+    if (_message.Empty()) {
+        raptor_asprintf(&text, "Error code is %d. No description.", _error_code);
+    } else {
+        raptor_asprintf(&text, "Error code is %d. %s.", _error_code, _message.begin());
+    }
     std::string rsp(text);
     free(text);
     return rsp;

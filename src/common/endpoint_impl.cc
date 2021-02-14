@@ -84,14 +84,14 @@ void EndpointImpl::BindWithContainer(Container *container, bool notify) {
 
 bool EndpointImpl::SendMsg(const Slice &slice) {
     if (_container) {
-        return _container->SendMsg(GetEndpointImpl(), slice.begin(), slice.size());
+        return _container->SendMsg(_connection_id, slice);
     }
     return false;
 }
 
 bool EndpointImpl::SendMsg(const void *data, size_t len) {
     if (_container) {
-        return _container->SendMsg(GetEndpointImpl(), data, len);
+        return _container->SendMsg(_connection_id, Slice(data, len));
     }
     return false;
 }

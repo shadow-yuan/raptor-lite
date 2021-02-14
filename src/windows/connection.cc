@@ -89,11 +89,11 @@ void Connection::Shutdown(bool notify, const Event &ev) {
     _snd_mtx.Unlock();
 }
 
-bool Connection::SendMsg(const void *data, size_t data_len) {
+bool Connection::SendMsg(const Slice &s) {
     if (!_endpoint->IsOnline()) return false;
 
     AutoMutex g(&_snd_mtx);
-    _snd_buffer.AddSlice(Slice(data, data_len));
+    _snd_buffer.AddSlice(s);
     return AsyncSend();
 }
 

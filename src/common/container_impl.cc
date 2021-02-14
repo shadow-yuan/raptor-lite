@@ -213,15 +213,15 @@ void ContainerImpl::Shutdown() {
     }
 }
 
-bool ContainerImpl::SendMsg(const Endpoint &ep, const void *data, size_t len) {
+bool ContainerImpl::SendMsg(uint64_t connection_id, const Slice &s) {
     uint32_t index = 0;
-    if (!CheckConnectionId(ep.ConnectionId(), &index)) {
+    if (!CheckConnectionId(connection_id, &index)) {
         return false;
     }
 
     auto con = GetConnection(index);
     if (con) {
-        return con->SendMsg(data, len);
+        return con->SendMsg(s);
     }
     return false;
 }

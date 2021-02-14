@@ -51,7 +51,7 @@ public:
     void Init(internal::NotificationTransferService *service, PollingThread *t,
               PollingThread *back);
     void SetProtocol(ProtocolHandler *p);
-    bool SendMsg(const void *data, size_t data_len);
+    bool SendMsg(const Slice &s);
     void Shutdown(bool notify, const Event &ev = Event());
     bool IsOnline();
 

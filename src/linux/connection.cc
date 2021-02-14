@@ -65,10 +65,10 @@ void Connection::SetProtocol(ProtocolHandler *p) {
     _proto = p;
 }
 
-bool Connection::SendMsg(const void *data, size_t data_len) {
+bool Connection::SendMsg(const Slice &s) {
     if (!_endpoint->IsOnline()) return false;
     AutoMutex g(&_snd_mutex);
-    _snd_buffer.AddSlice(Slice(data, data_len));
+    _snd_buffer.AddSlice(s);
     _send_thread->Modify((int)_endpoint->_fd, (void *)_endpoint->_connection_id,
                          EPOLLOUT | EPOLLET);
     return true;

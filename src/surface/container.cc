@@ -35,7 +35,7 @@ public:
     raptor_error Start() override;
     void Shutdown() override;
     raptor_error AttachEndpoint(const Endpoint &ep, bool notify = false) override;
-    bool SendMsg(const Endpoint &ep, const void *data, size_t len) override;
+    bool SendMsg(uint64_t connection_id, const Slice &s) override;
     void CloseEndpoint(const Endpoint &ep, bool event_notify = false) override;
 
 private:
@@ -62,8 +62,9 @@ raptor_error ContainerAdaptor::AttachEndpoint(const Endpoint &ep, bool notify) {
     return _impl->AttachEndpoint(ep, notify);
 }
 
-bool ContainerAdaptor::SendMsg(const Endpoint &ep, const void *data, size_t len) {
-    return _impl->SendMsg(ep, data, len);
+bool ContainerAdaptor::SendMsg(uint64_t connection_id, const Slice &s) {
+    if (s.Empty()) return true;
+    return _impl->SendMsg(connection_id, s);
 }
 
 void ContainerAdaptor::CloseEndpoint(const Endpoint &ep, bool event_notify) {

@@ -37,7 +37,7 @@ public:
     ~Endpoint();
 
     // If attached to the container, it returns
-    // a valid value, otherwise it returns 0 .
+    // a valid value, otherwise it returns uint64_t(-1) .
     uint64_t ConnectionId() const;
 
     // Do not close fd externally
@@ -46,11 +46,12 @@ public:
 
     std::string PeerString() const;
 
-    // Give the endpoint to the container management.
-    // It means that the data receiving and sending work
-    // is handed over to the container to complete.
+    // Bind the endpoint to the container. It means that the data
+    // receiving and sending work is handed over to the container
+    // to complete.
     void BindWithContainer(Container *container, bool notify = false) const;
 
+    // Must call BindWithContainer or AttachEndpoint before calling SendMsg.
     bool SendMsg(const Slice &slice) const;
     bool SendMsg(const void *data, size_t len) const;
 
