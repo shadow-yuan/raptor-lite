@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "raptor-lite/utils/list_entry.h"
@@ -36,8 +37,12 @@
 namespace raptor {
 class AcceptorHandler;
 struct AcceptObject;
-struct ListenInformation;
 class Property;
+
+struct ListenInforEx {
+    list_entry head;
+    SOCKET listen_fd;
+};
 
 class TcpListener final : public internal::EventReceivingService {
 public:
@@ -55,7 +60,8 @@ private:
 
     raptor_error StartAcceptEx(SOCKET listen_fd, raptor_resolved_address *addr,
                                struct AcceptObject *sp);
-    void ParsingNewConnectionAddress(const AcceptObject *sp, raptor_resolved_address *client);
+    void ParsingNewConnectionAddress(const AcceptObject *sp, raptor_resolved_address *server,
+                                     raptor_resolved_address *client);
 
     raptor_error GetExtensionFunction(SOCKET fd);
     void ProcessProperty(SOCKET fd, const Property &p);
@@ -67,8 +73,9 @@ private:
     LPFN_GETACCEPTEXSOCKADDRS _GetAcceptExSockAddrs;
     int _threads;
 
-    Mutex _mutex;  // for _heads
-    std::vector<ListenInformation *> _heads;
+    Mutex _mutex;
+
+    std::vector<ListenInforEx> _heads;
 
     std::shared_ptr<PollingThread> _poll_thread;
 };

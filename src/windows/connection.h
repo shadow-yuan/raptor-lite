@@ -41,11 +41,18 @@ namespace internal {
 class NotificationTransferService;
 }  // namespace internal
 
+struct ConnectionOverLappedEx {
+    OverLappedEx olex;
+    uint64_t connection_id;
+};
+
 class Connection final {
     friend class TcpContainer;
     friend class ContainerImpl;
 
 public:
+    static uint64_t CheckConnectionId(EventDetail *);
+
     explicit Connection(std::shared_ptr<EndpointImpl> obj);
     ~Connection();
 
@@ -88,8 +95,8 @@ private:
 
     bool _send_pending;
 
-    OverLappedEx _send_overlapped;
-    OverLappedEx _recv_overlapped;
+    ConnectionOverLappedEx _send_overlapped;
+    ConnectionOverLappedEx _recv_overlapped;
 
     SliceBuffer _rcv_buffer;
     SliceBuffer _snd_buffer;

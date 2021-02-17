@@ -31,6 +31,8 @@
 
 namespace raptor {
 class ConnectorHandler;
+struct async_connect_record_entry;
+
 class TcpConnector final : public internal::EventReceivingService {
 public:
     explicit TcpConnector(ConnectorHandler *handler);
@@ -49,6 +51,8 @@ private:
     raptor_error InternalConnect(const raptor_resolved_address *addr, intptr_t user,
                                  int timeout_millseconds);
     raptor_error GetConnectExIfNecessary(SOCKET s);
+
+    async_connect_record_entry *FindRecordEntryFromOverlapped(OVERLAPPED *p);
 
 private:
     ConnectorHandler *_handler;

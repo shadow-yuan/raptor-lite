@@ -10,22 +10,18 @@
 
 #include "raptor-lite/raptor-lite.h"
 
-// 开始时间
 int64_t g_begin_time(0);
-// 结束时间
+
 int64_t g_end_time(0);
 
-// 最大请求时间
 raptor::AtomicInt64 g_max_request_time(INT64_MIN);
-// 最小请求时间
+
 raptor::AtomicInt64 g_min_request_time(INT64_MAX);
 
-// 发起请求的数量
 raptor::AtomicInt64 g_send_request_count(0);
-// 结束请求的数量
+
 raptor::AtomicInt64 g_recv_request_count(0);
 
-// 关于连接数量
 int32_t g_connect_connection(0);
 raptor::AtomicInt32 g_success_connection(0);
 raptor::AtomicInt32 g_fail_connection(0);
@@ -152,8 +148,8 @@ public:
             {"EndpointNotifyHandler", static_cast<raptor::EndpointNotifyHandler *>(this)},
             {"NotCheckConnectionTimeout", true},
             {"TcpUserTimeoutMs", 5000},
-            {"RecvSendThreads", cpus},
-            {"MQConsumerThreads", cpus}};
+            {"RecvSendThreads", 1},
+            {"MQConsumerThreads", 1}};
 
         raptor_error err = raptor::CreateContainer(p, &container);
         if (err != RAPTOR_ERROR_NONE) {

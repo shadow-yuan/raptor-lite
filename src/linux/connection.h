@@ -45,6 +45,8 @@ class Connection final {
     friend class ContainerImpl;
 
 public:
+    static uint64_t CheckConnectionId(EventDetail *);
+
     explicit Connection(std::shared_ptr<EndpointImpl> obj);
     ~Connection();
 

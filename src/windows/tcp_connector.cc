@@ -58,6 +58,7 @@ raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
         return e;
     }
     _poll_thread->EnableTimeoutCheck(false);
+    _poll_thread->SetInterestingEventType(internal::kConnectEvent);
 
     _tcp_user_timeout_ms = tcp_user_timeout;
 
@@ -112,21 +113,30 @@ raptor_error TcpConnector::Connect(const std::string &addr, intptr_t user) {
 
 void TcpConnector::OnTimeoutCheck(int64_t) {}
 
+async_connect_record_entry *TcpConnector::FindRecordEntryFromOverlapped(OVERLAPPED *overlaped) {
+    size_t off = offsetof(OverLappedEx, overlapped);
+    intptr_t olex = reinterpret_cast<intptr_t>(overlaped) - static_cast<intptr_t>(off);
+    off = offsetof(async_connect_record_entry, ole);
+    intptr_t entry = olex - static_cast<intptr_t>(off);
+    return reinterpret_cast<async_connect_record_entry *>(entry);
+}
+
 void TcpConnector::OnEventProcess(EventDetail *detail) {
 
-    RAPTOR_ASSERT(detail->event_type == internal::kErrorEvent ||
-                  detail->event_type == internal::kConnectEvent);
+    RAPTOR_ASSERT(detail->event_type & internal::kConnectEvent);
 
-    auto CompletionKey = reinterpret_cast<struct async_connect_record_entry *>(detail->ptr);
+    async_connect_record_entry *entry = FindRecordEntryFromOverlapped(detail->overlaped);
+    // SOCKET sock_fd = reinterpret_cast<SOCKET>(detail->ptr);
+    log_warn("TcpConnector: find entry %x, threadid=%lu", entry, GetCurrentThreadId());
 
     // get local address
     raptor_resolved_address local;
     local.len = sizeof(local.addr);
     memset(local.addr, 0, local.len);
-    getsockname(CompletionKey->fd, (struct sockaddr *)local.addr, (int *)&local.len);
+    getsockname(entry->fd, (struct sockaddr *)local.addr, (int *)&local.len);
 
     std::shared_ptr<EndpointImpl> endpoint =
-        std::make_shared<EndpointImpl>(CompletionKey->fd, &local, &CompletionKey->addr);
+        std::make_shared<EndpointImpl>(entry->fd, &local, &entry->addr);
 
     if (detail->event_type & internal::kErrorEvent) {
         // Maybe an error occurred or the connection was closed
@@ -134,17 +144,18 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
         _handler->OnErrorOccurred(endpoint, err);
     } else {
         // update connect context
-        setsockopt(CompletionKey->fd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
+        setsockopt(entry->fd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
         Property property({"UserCustomValue", entry->user_value});
         _handler->OnConnect(endpoint, property);
         if (endpoint->IsOnline()) {
-            ProcessProperty(CompletionKey->fd, property);
+            ProcessProperty(entry->fd, property);
         }
     }
 
     AutoMutex g(&_mtex);
-    _records.erase(reinterpret_cast<intptr_t>(CompletionKey));
-    delete CompletionKey;
+    log_warn("TcpConnector: prepare delete entry %x, threadid=%lu", entry, GetCurrentThreadId());
+    _records.erase(reinterpret_cast<intptr_t>(entry));
+    delete entry;
 }
 
 void TcpConnector::ProcessProperty(SOCKET fd, const Property &p) {
@@ -206,6 +217,7 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr, 
     raptor_resolved_address mapped_addr;
     int status;
     BOOL ret;
+    char *str_addr = nullptr;
 
     struct async_connect_record_entry *entry = new struct async_connect_record_entry;
 
@@ -243,9 +255,10 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr, 
     _mtex.Lock();
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
-    _poll_thread->Add(entry->fd, (void *)entry);
+    _poll_thread->Add(entry->fd, reinterpret_cast<void *>(entry->fd));
     _mtex.Unlock();
 
+    log_warn("TcpConnector: First connect %x, threadid=%lu", entry, GetCurrentThreadId());
     ret = _connectex(entry->fd, (raptor_sockaddr *)&mapped_addr.addr, (int)mapped_addr.len, NULL, 0,
                      NULL, &entry->ole.overlapped);
 
@@ -259,7 +272,6 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr, 
         }
     }
 
-    char *str_addr = nullptr;
     raptor_sockaddr_to_string(&str_addr, &mapped_addr, 0);
     if (str_addr) {
         log_info("TcpConnector: start connecting %s", str_addr);

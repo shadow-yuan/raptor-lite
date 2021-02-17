@@ -20,9 +20,12 @@
 #define __RAPTOR_CORE_WINDOWS_IOCP_THREAD__
 
 #include <stddef.h>
+#include <stdint.h>
+#include <memory>
 
 #include "src/common/service.h"
 #include "src/windows/iocp.h"
+#include "raptor-lite/utils/ref_counted.h"
 #include "raptor-lite/utils/status.h"
 #include "raptor-lite/utils/thread.h"
 
@@ -42,10 +45,10 @@ struct EventDetail {
     OVERLAPPED *overlaped;
 };
 
-class PollingThread {
+class IocpThread {
 public:
-    explicit PollingThread(internal::EventReceivingService *service);
-    ~PollingThread();
+    explicit IocpThread(internal::EventReceivingService *service);
+    ~IocpThread();
     raptor_error Init(size_t rs_threads, size_t kernel_threads = 0);
     raptor_error Start();
     void Shutdown();
@@ -66,6 +69,30 @@ private:
     OVERLAPPED _exit;
     Iocp _iocp;
 };
+
+class IocpThreadAdaptor;
+class PollingThread final {
+public:
+    explicit PollingThread(internal::EventReceivingService *service);
+    ~PollingThread();
+
+    PollingThread(const PollingThread &) = delete;
+    PollingThread &operator=(const PollingThread &) = delete;
+
+    raptor_error Init(size_t rs_threads, size_t kernel_threads = 0);
+    raptor_error Start();
+    void Shutdown();
+    bool Add(SOCKET sock, void *CompletionKey);
+    void EnableTimeoutCheck(bool b);
+    void SetInterestingEventType(int event_type);
+
+private:
+    internal::EventReceivingService *_service;
+    RefCountedPtr<IocpThreadAdaptor> _impl;
+    bool _enable_timeout_check;
+    int32_t _instance_id;
+};
+
 }  // namespace raptor
 
 #endif  // __RAPTOR_CORE_WINDOWS_IOCP_THREAD__

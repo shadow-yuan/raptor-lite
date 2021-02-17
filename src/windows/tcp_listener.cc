@@ -30,36 +30,17 @@
 
 namespace raptor {
 
-struct ListenInformation {
-    list_entry head;  // list head
-    int listen_port;
-    int count;
-    SOCKET listen_fd;
-    raptor_resolved_address addr;  // for acceptex
-    Mutex mutex;                   // for list
-    ListenInformation() {
-        RAPTOR_LIST_INIT(&head);
-        listen_port = 0;
-        count = 0;
-        listen_fd = INVALID_SOCKET;
-        memset(&addr, 0, sizeof(addr));
-    }
-    ~ListenInformation() {
-        if (listen_fd != INVALID_SOCKET) {
-            closesocket(listen_fd);
-        }
-    }
-};
-
 struct AcceptObject {
     list_entry entry;
     SOCKET new_socket;
+    int listen_port;
     raptor_dualstack_mode mode;
     uint8_t addr_buffer[(sizeof(raptor_sockaddr_in6) + 16) * 2];
     OverLappedEx olex;
     AcceptObject() {
         RAPTOR_LIST_ENTRY_INIT(&entry);
         new_socket = INVALID_SOCKET;
+        listen_port = 0;
         mode = RAPTOR_DSMODE_NONE;
         memset(addr_buffer, 0, sizeof(addr_buffer));
         memset(&olex, 0, sizeof(olex));
@@ -92,6 +73,7 @@ raptor_error TcpListener::Init(int threads) {
         return e;
     }
     _poll_thread->EnableTimeoutCheck(false);
+    _poll_thread->SetInterestingEventType(internal::kAcceptEvent);
 
     _shutdown = false;
     _threads = threads;
@@ -113,18 +95,17 @@ void TcpListener::Shutdown() {
         _shutdown = true;
         _poll_thread->Shutdown();
 
-        AutoMutex g(&_mutex);
         for (size_t i = 0; i < _heads.size(); i++) {
-            ListenInformation *info = _heads[i];
+            auto info = _heads[i];
             list_entry *entry = nullptr;
             do {
-                entry = raptor_list_pop_back(&info->head);
+                entry = raptor_list_pop_back(&info.head);
                 if (entry) {
                     delete reinterpret_cast<AcceptObject *>(entry);
                 }
             } while (entry);
 
-            delete info;
+            closesocket(info.listen_fd);
         }
         _heads.clear();
         log_warn("TcpListener: shutdown");
@@ -160,33 +141,31 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     }
 
     _mutex.Lock();
+    struct ListenInforEx tmp;
     size_t index = _heads.size();
-    ListenInformation *info = new ListenInformation();
+    _heads.emplace_back(tmp);
+
+    auto info = &_heads[index];
     info->listen_fd = listen_fd;
-    info->listen_port = port;
-    memcpy(&info->addr, &mapped_addr, sizeof(mapped_addr));
-    _heads.emplace_back(info);
-    _poll_thread->Add(listen_fd, info);
+    RAPTOR_LIST_INIT(&info->head);
+    _poll_thread->Add(listen_fd, reinterpret_cast<void *>(listen_fd));
     _mutex.Unlock();
 
-    info->mutex.Lock();
     for (size_t i = 0; i < _threads + 1; i++) {
         struct AcceptObject *node = new AcceptObject;
+        node->listen_port = port;
         node->mode = mode;
         node->olex.event_type = internal::kAcceptEvent;
         node->olex.HandleId = AcceptBaseHandleId + static_cast<uint32_t>(index);
         raptor_list_push_back(&info->head, &node->entry);
 
-        e = StartAcceptEx(listen_fd, &info->addr, node);
+        e = StartAcceptEx(listen_fd, &mapped_addr, node);
         if (e != RAPTOR_ERROR_NONE) {
             log_error("TcpListener: Failed to StartAcceptEx, %s", e->ToString().c_str());
             raptor_list_remove_entry(&node->entry);
             delete node;
-            info->mutex.Unlock();
             return e;
         }
-
-        info->count++;
 
         if (i == 0) {
             char *addr_string = nullptr;
@@ -196,7 +175,7 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
             if (addr_string) free(addr_string);
         }
     }
-    info->mutex.Unlock();
+
     return RAPTOR_ERROR_NONE;
 }
 
@@ -237,28 +216,28 @@ raptor_error TcpListener::GetExtensionFunction(SOCKET fd) {
 void TcpListener::OnTimeoutCheck(int64_t) {}
 
 void TcpListener::OnEventProcess(EventDetail *detail) {
-    RAPTOR_ASSERT(detail->event_type == internal::kErrorEvent ||
-                  detail->event_type == internal::kAcceptEvent);
+    RAPTOR_ASSERT(detail->event_type & internal::kAcceptEvent);
 
     size_t off = offsetof(AcceptObject, olex);
     AcceptObject *object = reinterpret_cast<AcceptObject *>(
         reinterpret_cast<intptr_t>(detail->overlaped) - static_cast<intptr_t>(off));
 
-    ListenInformation *info = reinterpret_cast<ListenInformation *>(detail->ptr);
+    SOCKET listen_fd = reinterpret_cast<SOCKET>(detail->ptr);
 
-    raptor_resolved_address client;
+    raptor_resolved_address client, server;
     memset(&client, 0, sizeof(client));
-    ParsingNewConnectionAddress(object, &client);
+    memset(&server, 0, sizeof(server));
+    ParsingNewConnectionAddress(object, &server, &client);
 
-    auto ep = std::make_shared<EndpointImpl>(object->new_socket, &info->addr, &client);
-    ep->SetListenPort(static_cast<uint16_t>(info->listen_port));
+    auto ep = std::make_shared<EndpointImpl>(object->new_socket, &server, &client);
+    ep->SetListenPort(static_cast<uint16_t>(object->listen_port));
 
     Property property;
     _service->OnAccept(ep, property);
     ProcessProperty(object->new_socket, property);
 
     object->new_socket = INVALID_SOCKET;
-    raptor_error e = StartAcceptEx(info->listen_fd, &info->addr, object);
+    raptor_error e = StartAcceptEx(listen_fd, &server, object);
 
     if (e != RAPTOR_ERROR_NONE) {
         log_error("TcpListener: Failed to StartAcceptEx for next fd, %s", e->ToString().c_str());
@@ -313,6 +292,7 @@ failure:
 }
 
 void TcpListener::ParsingNewConnectionAddress(const AcceptObject *sp,
+                                              raptor_resolved_address *server,
                                               raptor_resolved_address *client) {
 
     raptor_sockaddr *local = NULL;
@@ -325,12 +305,11 @@ void TcpListener::ParsingNewConnectionAddress(const AcceptObject *sp,
                           sizeof(raptor_sockaddr_in6) + 16, &local, &local_addr_len, &remote,
                           &remote_addr_len);
 
-    /*
     if (local != nullptr) {
         server->len = local_addr_len;
         memcpy(server->addr, local, local_addr_len);
     }
-    */
+
     if (remote != nullptr) {
         client->len = remote_addr_len;
         memcpy(client->addr, remote, remote_addr_len);

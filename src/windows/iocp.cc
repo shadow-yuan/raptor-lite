@@ -17,7 +17,6 @@
  */
 
 #include "src/windows/iocp.h"
-#include "raptor-lite/utils/log.h"
 
 namespace raptor {
 Iocp::Iocp()
@@ -49,7 +48,8 @@ void Iocp::shutdown() {
 bool Iocp::add(SOCKET sock, void *CompletionKey) {
     if (!_handle) return false;
     HANDLE h = CreateIoCompletionPort((HANDLE)sock, _handle, (ULONG_PTR)CompletionKey, 0);
-    RAPTOR_ASSERT(h != NULL);
+    // If added repeatedly, NULL will be returned, and WSAGetLastError return 87.
+    // RAPTOR_ASSERT(h != NULL);
     return (h != NULL);
 }
 
