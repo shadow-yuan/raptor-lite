@@ -29,6 +29,7 @@ endif()
 
 # Build option
 option(RAPTOR_BUILD_ALLTESTS     "Build raptor-lite's all unit tests" ON)
+option(RAPTOR_INSTALL "Install raptor-lite's header and library" ON)
 
 if(WIN32 AND MSVC)
     add_definitions(/W4)
@@ -149,3 +150,52 @@ if(RAPTOR_BUILD_ALLTESTS)
     raptor_test_func("${PROJECT_SOURCE_DIR}/example/echo_server.cc")
 
 endif(RAPTOR_BUILD_ALLTESTS)
+
+if(RAPTOR_INSTALL)
+    include(GNUInstallDirs)
+    install(TARGETS raptor-lite
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+
+    install(
+        FILES
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/impl/acceptor.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/impl/connector.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/impl/container.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/impl/endpoint.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/impl/event.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/impl/handler.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/impl/property.h"
+
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/raptor-lite/impl
+    )
+    install(
+        FILES
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/atomic.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/color.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/cpu.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/list_entry.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/log.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/mpscq.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/ref_counted_ptr.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/ref_counted.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/slice_buffer.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/slice.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/status.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/sync.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/thread.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/time.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/timer.h"
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/utils/useful.h"
+
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/raptor-lite/utils
+    )
+    install(
+        FILES
+            "${PROJECT_SOURCE_DIR}/include/raptor-lite/raptor-lite.h"
+
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/raptor-lite
+    )
+endif(RAPTOR_INSTALL)
