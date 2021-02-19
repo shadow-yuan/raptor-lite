@@ -73,7 +73,6 @@ raptor_error TcpListener::Init(int threads) {
         return e;
     }
     _poll_thread->EnableTimeoutCheck(false);
-    _poll_thread->SetInterestingEventType(internal::kAcceptEvent);
 
     _shutdown = false;
     _threads = threads;
@@ -93,7 +92,6 @@ void TcpListener::Shutdown() {
     if (!_shutdown) {
         log_warn("TcpListener: prepare to shutdown");
         _shutdown = true;
-        _poll_thread->Shutdown();
 
         for (size_t i = 0; i < _heads.size(); i++) {
             auto info = _heads[i];
@@ -105,8 +103,11 @@ void TcpListener::Shutdown() {
                 }
             } while (entry);
 
+            _poll_thread->Delete(info.listen_fd);
             closesocket(info.listen_fd);
         }
+        _poll_thread->Shutdown();
+
         _heads.clear();
         log_warn("TcpListener: shutdown");
     }
@@ -148,7 +149,7 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     auto info = &_heads[index];
     info->listen_fd = listen_fd;
     RAPTOR_LIST_INIT(&info->head);
-    _poll_thread->Add(listen_fd, reinterpret_cast<void *>(listen_fd));
+    _poll_thread->Add(listen_fd, static_cast<uint64_t>(listen_fd), internal::kAcceptEvent);
     _mutex.Unlock();
 
     for (size_t i = 0; i < _threads + 1; i++) {
@@ -222,7 +223,7 @@ void TcpListener::OnEventProcess(EventDetail *detail) {
     AcceptObject *object = reinterpret_cast<AcceptObject *>(
         reinterpret_cast<intptr_t>(detail->overlaped) - static_cast<intptr_t>(off));
 
-    SOCKET listen_fd = reinterpret_cast<SOCKET>(detail->ptr);
+    SOCKET listen_fd = static_cast<SOCKET>(detail->ptr);
 
     raptor_resolved_address client, server;
     memset(&client, 0, sizeof(client));

@@ -31,11 +31,12 @@ struct EventDetail;
 
 namespace internal {
 
-constexpr int kErrorEvent   = 1;
-constexpr int kSendEvent    = 1 << 1;
-constexpr int kRecvEvent    = 1 << 2;
-constexpr int kConnectEvent = 1 << 3;
-constexpr int kAcceptEvent  = 1 << 4;
+constexpr int kErrorEvent    = 1;
+constexpr int kSendEvent     = 1 << 1;
+constexpr int kRecvEvent     = 1 << 2;
+constexpr int kConnectEvent  = 1 << 3;
+constexpr int kAcceptEvent   = 1 << 4;
+constexpr int kMaxEventValue = kAcceptEvent | kErrorEvent;
 
 class EventReceivingService {
 public:

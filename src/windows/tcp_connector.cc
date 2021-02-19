@@ -58,7 +58,6 @@ raptor_error TcpConnector::Init(int threads, int tcp_user_timeout) {
         return e;
     }
     _poll_thread->EnableTimeoutCheck(false);
-    _poll_thread->SetInterestingEventType(internal::kConnectEvent);
 
     _tcp_user_timeout_ms = tcp_user_timeout;
 
@@ -79,14 +78,18 @@ void TcpConnector::Shutdown() {
     if (!_shutdown) {
         log_warn("TcpConnector: prepare to shutdown");
         _shutdown = true;
-        _poll_thread->Shutdown();
 
-        AutoMutex g(&_mtex);
+        _mtex.Lock();
         for (auto record : _records) {
             auto entry = reinterpret_cast<struct async_connect_record_entry *>(record);
             closesocket(entry->fd);
+            _poll_thread->Delete(entry->fd);
         }
         _records.clear();
+        _mtex.Unlock();
+
+        _poll_thread->Shutdown();
+
         log_warn("TcpConnector: shutdown");
     }
 }
@@ -127,7 +130,6 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
 
     async_connect_record_entry *entry = FindRecordEntryFromOverlapped(detail->overlaped);
     // SOCKET sock_fd = reinterpret_cast<SOCKET>(detail->ptr);
-    log_warn("TcpConnector: find entry %x, threadid=%lu", entry, GetCurrentThreadId());
 
     // get local address
     raptor_resolved_address local;
@@ -153,9 +155,10 @@ void TcpConnector::OnEventProcess(EventDetail *detail) {
     }
 
     AutoMutex g(&_mtex);
-    log_warn("TcpConnector: prepare delete entry %x, threadid=%lu", entry, GetCurrentThreadId());
-    _records.erase(reinterpret_cast<intptr_t>(entry));
-    delete entry;
+    size_t n = _records.erase(reinterpret_cast<intptr_t>(entry));
+    if (n > 0) {
+        delete entry;
+    }
 }
 
 void TcpConnector::ProcessProperty(SOCKET fd, const Property &p) {
@@ -255,7 +258,7 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr, 
     _mtex.Lock();
     memcpy(&entry->addr, &mapped_addr, sizeof(mapped_addr));
     _records.insert(reinterpret_cast<intptr_t>(entry));
-    _poll_thread->Add(entry->fd, reinterpret_cast<void *>(entry->fd));
+    _poll_thread->Add(entry->fd, static_cast<uint64_t>(entry->fd), internal::kConnectEvent);
     _mtex.Unlock();
 
     log_warn("TcpConnector: First connect %x, threadid=%lu", entry, GetCurrentThreadId());

@@ -86,7 +86,7 @@ raptor_error ContainerImpl::Init() {
         log_error("ContainerImpl: Failed to init poll(back) thread, %s", e->ToString().c_str());
         return e;
     }
-    _poll_thread->EnableTimeoutCheck(!_option.not_check_connection_timeout);
+
     _back_thread->EnableTimeoutCheck(false);
 #else
     _poll_thread = std::make_shared<PollingThread>(this);
@@ -95,9 +95,8 @@ raptor_error ContainerImpl::Init() {
         log_error("ContainerImpl: Failed to init poll thread, %s", e->ToString().c_str());
         return e;
     }
-    _poll_thread->EnableTimeoutCheck(!_option.not_check_connection_timeout);
-    _poll_thread->SetInterestingEventType(internal::kRecvEvent | internal::kSendEvent);
 #endif
+    _poll_thread->EnableTimeoutCheck(!_option.not_check_connection_timeout);
 
     if (_option.heartbeat_handler && _option.heartbeat_handler->GetHeartbeatInterval() > 0) {
         _timer_thread = std::make_shared<Timer>(this);
@@ -356,7 +355,11 @@ void ContainerImpl::OnSendEvent(uint32_t index, EventDetail *ptr) {
 void ContainerImpl::OnEventProcess(EventDetail *detail) {
     if (!detail) return;
 
-    uint64_t connection_id = Connection::CheckConnectionId(detail);
+#ifdef _WIN32
+    uint64_t connection_id = detail->ptr;
+#else
+    uint64_t connection_id = reinterpret_cast<uint64_t>(detail->ptr);
+#endif
     uint32_t index = 0;
 
     if (!CheckConnectionId(connection_id, &index)) {

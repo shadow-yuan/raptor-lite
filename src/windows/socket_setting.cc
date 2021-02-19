@@ -110,7 +110,7 @@ void raptor_set_socket_shutdown(SOCKET fd) {
         DisconnectEx(fd, NULL, 0, 0);
     } else {
         char *message = raptor_format_message(WSAGetLastError());
-        log_info("Unable to retrieve DisconnectEx pointer : %s", message);
+        log_debug("Unable to retrieve 'DisconnectEx', %s", message);
         free(message);
     }
     closesocket(fd);

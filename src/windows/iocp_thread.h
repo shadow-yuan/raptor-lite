@@ -37,7 +37,7 @@ typedef struct {
 } OverLappedEx;
 
 struct EventDetail {
-    void *ptr;
+    uint64_t ptr;
     int event_type;
     int error_code;
     uint32_t transferred_bytes;
@@ -82,9 +82,10 @@ public:
     raptor_error Init(size_t rs_threads, size_t kernel_threads = 0);
     raptor_error Start();
     void Shutdown();
-    bool Add(SOCKET sock, void *CompletionKey);
+    bool Add(SOCKET sock, uint64_t CompletionKey, int type);
+    int Modify(SOCKET sock, uint64_t CompletionKey, int type);
+    int Delete(SOCKET sock, int type = 0);
     void EnableTimeoutCheck(bool b);
-    void SetInterestingEventType(int event_type);
 
 private:
     internal::EventReceivingService *_service;

@@ -35,33 +35,23 @@ namespace raptor {
 
 AtomicUInt32 Connection::global_counter(0);
 
-uint64_t Connection::CheckConnectionId(EventDetail *ed) {
-    size_t off = offsetof(OverLappedEx, overlapped);
-    intptr_t olex = reinterpret_cast<intptr_t>(ed->overlaped) - static_cast<intptr_t>(off);
-    off = offsetof(ConnectionOverLappedEx, olex);
-    ConnectionOverLappedEx *col =
-        reinterpret_cast<ConnectionOverLappedEx *>(olex - static_cast<intptr_t>(off));
-    return col->connection_id;
-}
-
 Connection::Connection(std::shared_ptr<EndpointImpl> obj)
     : _service(nullptr)
     , _proto(nullptr)
-    , _send_pending(false) {
+    , _send_pending(false)
+    , _poll_thread(nullptr) {
 
     memset(&_send_overlapped, 0, sizeof(_send_overlapped));
     memset(&_recv_overlapped, 0, sizeof(_recv_overlapped));
-    _send_overlapped.olex.event_type = internal::kSendEvent;
-    _recv_overlapped.olex.event_type = internal::kRecvEvent;
+    _send_overlapped.event_type = internal::kSendEvent;
+    _recv_overlapped.event_type = internal::kRecvEvent;
 
     _endpoint = obj;
 
     _handle_id = global_counter.FetchAdd(1, MemoryOrder::RELAXED);
 
-    _send_overlapped.olex.HandleId = _handle_id;
-    _recv_overlapped.olex.HandleId = _handle_id;
-    _send_overlapped.connection_id = _endpoint->_connection_id;
-    _recv_overlapped.connection_id = _endpoint->_connection_id;
+    _send_overlapped.HandleId = _handle_id;
+    _recv_overlapped.HandleId = _handle_id;
 }
 
 Connection::~Connection() {}
@@ -69,7 +59,9 @@ Connection::~Connection() {}
 bool Connection::Init(internal::NotificationTransferService *service, PollingThread *iocp_thread) {
     _service = service;
     _send_pending = false;
-    iocp_thread->Add(static_cast<SOCKET>(_endpoint->_fd), reinterpret_cast<void *>(_endpoint->_fd));
+    _poll_thread = iocp_thread;
+    iocp_thread->Add(static_cast<SOCKET>(_endpoint->_fd), _endpoint->_connection_id,
+                     internal::kRecvEvent | internal::kSendEvent);
     return AsyncRecv();
 }
 
@@ -81,6 +73,8 @@ void Connection::Shutdown(bool notify, const Event &ev) {
     if (!_endpoint->IsOnline()) {
         return;
     }
+
+    _poll_thread->Delete(static_cast<SOCKET>(_endpoint->_fd));
 
     raptor_set_socket_shutdown((SOCKET)_endpoint->_fd);
     _endpoint->_fd = static_cast<uint64_t>(INVALID_SOCKET);
@@ -140,7 +134,7 @@ bool Connection::AsyncSend() {
 
     // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasend
     int ret = WSASend((SOCKET)_endpoint->_fd, buffers, counter, NULL, 0,
-                      &_send_overlapped.olex.overlapped, NULL);
+                      &_send_overlapped.overlapped, NULL);
 
     if (ret == SOCKET_ERROR) {
         int error = WSAGetLastError();
@@ -161,7 +155,7 @@ bool Connection::AsyncRecv() {
 
     // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsarecv
     int ret = WSARecv((SOCKET)_endpoint->_fd, &buffer, 1, NULL, &dwFlags,
-                      &_recv_overlapped.olex.overlapped, NULL);
+                      &_recv_overlapped.overlapped, NULL);
 
     if (ret == SOCKET_ERROR) {
         int error = WSAGetLastError();

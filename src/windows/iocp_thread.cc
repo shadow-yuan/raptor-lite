@@ -19,8 +19,7 @@
 #include "src/windows/iocp_thread.h"
 #include <string.h>
 #include <set>
-#include <utility>
-#include <vector>
+#include <unordered_map>
 
 #include "raptor-lite/utils/atomic.h"
 #include "raptor-lite/utils/log.h"
@@ -144,10 +143,11 @@ void IocpThread::WorkThread(void *) {
                 // Maybe an error occurred or the connection was closed
                 OverLappedEx *olex = (OverLappedEx *)lpOverlapped;
 
+                int err = WSAGetLastError();
                 EventDetail detail;
-                detail.error_code = WSAGetLastError();
-                detail.event_type = olex->event_type | internal::kErrorEvent;
-                detail.ptr = CompletionKey;
+                detail.error_code = (err == 0) ? (-1) : (err);
+                detail.event_type = olex->event_type;
+                detail.ptr = reinterpret_cast<uint64_t>(CompletionKey);
                 detail.overlaped = lpOverlapped;
                 detail.transferred_bytes = NumberOfBytesTransferred;
                 detail.handle_id = 0;
@@ -168,7 +168,7 @@ void IocpThread::WorkThread(void *) {
         EventDetail detail;
         detail.error_code = 0;
         detail.event_type = olex->event_type;
-        detail.ptr = CompletionKey;
+        detail.ptr = reinterpret_cast<uint64_t>(CompletionKey);
         detail.overlaped = lpOverlapped;
         detail.transferred_bytes = NumberOfBytesTransferred;
         detail.handle_id = olex->HandleId;
@@ -176,11 +176,17 @@ void IocpThread::WorkThread(void *) {
     }
 }
 
+/*
+ * IocpThread adaptor implement
+ */
+typedef struct {
+    uint64_t CompletionKey;
+    internal::EventReceivingService *service;
+    int event_types;
+} IocpSupplementInfo;
+
 class IocpThreadAdaptor final : public RefCounted<IocpThreadAdaptor, PolymorphicRefCount>,
                                 public internal::EventReceivingService {
-
-    using InterestingEventObject = std::pair<int, internal::EventReceivingService *>;
-
 public:
     IocpThreadAdaptor()
         : _iocp(this) {}
@@ -201,78 +207,84 @@ public:
         _iocp.Shutdown();
     }
 
-    bool Add(SOCKET sock, void *CompletionKey) {
-        return _iocp.Add(sock, CompletionKey);
+    bool Add(SOCKET sock, uint64_t CompletionKey, int type,
+             internal::EventReceivingService *service) {
+        bool r = _iocp.Add(sock, reinterpret_cast<void *>(sock));
+        AutoMutex g(&_sock_mtx);
+        IocpSupplementInfo info;
+        info.CompletionKey = CompletionKey;
+        info.service = service;
+        info.event_types = type;
+        _interesting_event_services[sock] = info;
+        return r;
     }
 
-    void RegisterSerivce(internal::EventReceivingService *service, bool timeout_check,
-                         int event_type) {
-        AutoMutex g(&_mutex);
+    inline bool Modify(SOCKET sock, uint64_t CompletionKey, int type,
+                       internal::EventReceivingService *service) {
+        return Add(sock, CompletionKey, type, service);
+    }
+
+    void Delete(SOCKET sock, int type) {
+        AutoMutex g(&_sock_mtx);
+        auto it = _interesting_event_services.find(sock);
+        if (it == _interesting_event_services.end()) {
+            return;
+        }
+        if (type == 0) {
+            _interesting_event_services.erase(it);
+        } else {
+            it->second.event_types &= ~type;
+        }
+    }
+
+    void EnableTimeoutCheck(internal::EventReceivingService *service, bool timeout_check) {
+        AutoMutex g(&_timeout_mtx);
 
         if (timeout_check) {
             _timeout_check_services.insert(service);
-        }
-        std::vector<InterestingEventObject> temp;
-        temp.push_back({event_type, service});
-
-        for (size_t i = 0; i < _interesting_event_services.size(); i++) {
-            temp.emplace_back(_interesting_event_services[i]);
-        }
-        _interesting_event_services.swap(temp);
-    }
-
-    void UnregisterService(internal::EventReceivingService *service) {
-        AutoMutex g(&_mutex);
-        _timeout_check_services.erase(service);
-
-        for (auto it = _interesting_event_services.begin();
-             it != _interesting_event_services.end();) {
-            if (it->second == service) {
-                it = _interesting_event_services.erase(it);
-            } else {
-                ++it;
-            }
+        } else {
+            _timeout_check_services.erase(service);
         }
     }
 
 private:
     void OnEventProcess(EventDetail *detail) override {
-        auto service = FindEventService(detail->event_type);
+        auto service = FindEventService(detail);
         if (service) {
             service->OnEventProcess(detail);
-        } else {
-            log_warn("IocpThreadAdaptor: Receive IOCP event %d, but no service handles it",
-                     detail->event_type);
         }
     }
 
     void OnTimeoutCheck(int64_t current_millseconds) override {
-        AutoMutex g(&_mutex);
+        AutoMutex g(&_timeout_mtx);
         for (auto tcs : _timeout_check_services) {
             tcs->OnTimeoutCheck(current_millseconds);
         }
     }
 
 private:
-    internal::EventReceivingService *FindEventService(int event_type) {
-        AutoMutex g(&_mutex);
-
-        internal::EventReceivingService *service = nullptr;
-        for (size_t i = 0; i < _interesting_event_services.size(); i++) {
-            if (_interesting_event_services[i].first & event_type) {
-                service = _interesting_event_services[i].second;
-                break;
-            }
+    internal::EventReceivingService *FindEventService(EventDetail *detail) {
+        AutoMutex g(&_sock_mtx);
+        SOCKET sock = static_cast<SOCKET>(detail->ptr);
+        auto it = _interesting_event_services.find(sock);
+        if (it == _interesting_event_services.end()) {
+            return nullptr;
         }
-        return service;
+        if (detail->event_type < internal::kErrorEvent ||
+            detail->event_type > internal::kMaxEventValue) {
+            detail->event_type = it->second.event_types | internal::kErrorEvent;
+        }
+        detail->ptr = it->second.CompletionKey;
+        return it->second.service;
     }
 
     IocpThread _iocp;
-    Mutex _mutex;
+    Mutex _sock_mtx;
+    Mutex _timeout_mtx;
 
     // send, recv, connect, accept
     std::set<internal::EventReceivingService *> _timeout_check_services;
-    std::vector<InterestingEventObject> _interesting_event_services;
+    std::unordered_map<SOCKET, IocpSupplementInfo> _interesting_event_services;
 };
 
 // ------------------------------------
@@ -328,28 +340,35 @@ void PollingThread::Shutdown() {
         _impl->Shutdown();
     }
     _instance_id = 0;
-    _impl->UnregisterService(_service);
 }
 
-bool PollingThread::Add(SOCKET sock, void *CompletionKey) {
+bool PollingThread::Add(SOCKET sock, uint64_t CompletionKey, int type) {
     if (_instance_id == 0) {
         return false;
     }
-    return _impl->Add(sock, CompletionKey);
+    return _impl->Add(sock, CompletionKey, type, _service);
+}
+
+int PollingThread::Modify(SOCKET sock, uint64_t CompletionKey, int type) {
+    if (_instance_id == 0) {
+        return false;
+    }
+    return _impl->Modify(sock, CompletionKey, type, _service);
+}
+
+int PollingThread::Delete(SOCKET sock, int type) {
+    if (_instance_id == 0) {
+        return false;
+    }
+    _impl->Delete(sock, type);
+    return true;
 }
 
 void PollingThread::EnableTimeoutCheck(bool b) {
     if (_instance_id == 0) {
         return;
     }
-    _enable_timeout_check = b;
-}
-
-void PollingThread::SetInterestingEventType(int event_type) {
-    if (_instance_id == 0) {
-        return;
-    }
-    _impl->RegisterSerivce(_service, _enable_timeout_check, event_type);
+    _impl->EnableTimeoutCheck(_service, b);
 }
 
 }  // namespace raptor
