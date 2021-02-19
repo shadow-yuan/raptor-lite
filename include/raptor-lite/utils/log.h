@@ -23,13 +23,14 @@
 #include "raptor-lite/utils/useful.h"
 
 namespace raptor {
-enum class LogLevel : int { kDebug, kInfo, kWarn, kError, kDisable };
+enum class LogLevel : int { kDebug, kInfo, kWarn, kError };
 
 typedef struct {
     const char *file;
     int line;
     LogLevel level;
     const char *message;
+    unsigned long threadid;
 } LogArgument;
 
 typedef void (*LogPrintCallback)(LogArgument *arg);

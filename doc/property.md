@@ -1,5 +1,5 @@
 # Property
-关于 raptor-lite 中出现的各种 Property 的细节说明
+关于 raptor-lite 中出现的各种 Property 的说明文档
 
 ## 对象属性
 ### Acceptor
@@ -31,6 +31,7 @@ raptor_error CreateContainer(const Property &p, Container **out);
 | ProtocolHandler          | optional | 协议解析接口, 默认为 nullptr |
 | HeartbeatHandler         | optional | 接收心跳相关的事件, 默认为 nullptr |
 | EndpointClosedHandler    | optional | 接收远端节点断开的事件, 默认为 nullptr|
+| EndpointNotifyHandler    | optional | 设置附加到 container 到的 endpoint 是否经过消息队列再通知外部, 默认为 nullptr|
 | RecvSendThreads          | optional | 数据收发线程数量设置, 默认为1, 主要影响 IOCP/EPOLL 工作线程 |
 | DefaultContainerSize     | optional | 容器初始连接数量, 默认为256|
 | MaxContainerSize         | optional | 可以容纳同时在线的连接数量的上限, 默认为1048576|
@@ -54,11 +55,12 @@ raptor_error err = raptor::CreateContainer(property, &container);
 使用 AcceptorHandler 和 ConnectorHandler 时会用到
 |      名称       |   约束   | 说明 |
 | --------------- | -------- |-----------------------------------|
-| SocketNoSIGPIPE    | optional | 是否禁用 SIGPIPE, 默认为 true|
-| SocketReuseAddress | optional | SOCKET 选项 SO_REUSEADDR, 默认为true|
-| SocketRecvTimeoutMs| optional | SOCKET 选项 SO_RCVTIMEO, int 类型 |
-| SocketSendTimeoutMs| optional | SOCKET 选项 SO_SNDTIMEO, int 类型 |
-| SocketLowLatency   | optional | SOCKET 选项 TCP_NODELAY, 默认为true|
+| UserCustomValue    | optional | 获取调用 Connector->Connect() 时传入的自定义参数, 默认为 0|
+| SocketNoSIGPIPE    | optional | 设置是否禁用 SIGPIPE, 默认为 true|
+| SocketReuseAddress | optional | 设置 SOCKET 选项 SO_REUSEADDR, 默认为true|
+| SocketRecvTimeoutMs| optional | 设置 SOCKET 选项 SO_RCVTIMEO, int 类型 |
+| SocketSendTimeoutMs| optional | 设置 SOCKET 选项 SO_SNDTIMEO, int 类型 |
+| SocketLowLatency   | optional | 设置 SOCKET 选项 TCP_NODELAY, 默认为true|
 | SocketNonBlocking  | optional | 设置是否非阻塞模式, 默认为true|
 
 ```c++
@@ -77,6 +79,13 @@ public:
 
 示例: 当 `OnAccept` 或 `OnConnect` 被调用即表示成功建立了连接, 此时 `Endpoint` 中包含连接的信息, 通过修改`settings` 从而设置该连接的各种 SOCKET 属性.
 ```c++
+// set property
 settings({{"SocketRecvTimeoutMs", 5000},
           {"SocketSendTimeoutMs", 5000} });
+```
+
+示例：当 `OnConnect` 被调用时, 通过 `settings` 获取自定义参数.
+```c++
+// get user custom value (OnConnect)
+uintptr_t current_index = settings.GetValue<uintptr_t>("UserCustomValue");
 ```

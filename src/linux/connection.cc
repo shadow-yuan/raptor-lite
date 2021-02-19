@@ -38,10 +38,6 @@
 namespace raptor {
 AtomicUInt32 Connection::global_counter(0);
 
-uint64_t Connection::CheckConnectionId(EventDetail *ed) {
-    return reinterpret_cast<uint64_t>(detail->ptr);
-}
-
 Connection::Connection(std::shared_ptr<EndpointImpl> obj)
     : _service(nullptr)
     , _proto(nullptr)

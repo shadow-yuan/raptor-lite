@@ -23,7 +23,7 @@
 
 namespace raptor {
 
-enum Color { Default = 0, Black, Red, Green, Yellow, Blue, Magenta, Cyan, White };
+enum class Color { Default = 0, Black, Red, Green, Yellow, Blue, Magenta, Cyan, White };
 
 // f = stdout, stderror
 void SetConsoleColor(FILE *f, Color foreground, Color background);

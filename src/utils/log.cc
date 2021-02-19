@@ -48,32 +48,22 @@ void log_default_print(LogArgument *args);
 
 AtomicIntptr g_log_function((intptr_t)log_default_print);
 AtomicIntptr g_min_level((intptr_t)LogLevel::kDebug);
-char g_level_char[static_cast<int>(LogLevel::kDisable)] = {'D', 'I', 'W', 'E'};
-Color g_fc_table[static_cast<int>(LogLevel::kDisable)] = {Cyan, Green, Yellow, Red};
-Color g_bc_table[static_cast<int>(LogLevel::kDisable)] = {Black, Black, Black, White};
+char g_level_char[4] = {'D', 'I', 'W', 'E'};
+Color g_fc_table[4] = {Color::Cyan, Color::Green, Color::Yellow, Color::Red};
+Color g_bc_table[4] = {Color::Black, Color::Black, Color::Black, Color::White};
 MultiProducerSingleConsumerQueue g_mpscq;
 Thread g_thd;
 bool g_shutdown = true;
 
 #ifdef _WIN32
-static __declspec(thread) unsigned long tls_tid = 0;
 constexpr char delimiter = '\\';
 #define RAPTOR_LOG_FORMAT "[%s.%06d %5lu %c] %s (%s:%d)"
 #else
-static __thread unsigned long tls_tid = 0;
 constexpr char delimiter = '/';
 #define RAPTOR_LOG_FORMAT "[%s.%06d %7lu %c] %s (%s:%d)"
 #endif
 
 void log_default_print(LogArgument *args) {
-    if (tls_tid == 0) {
-#ifdef _WIN32
-        tls_tid = static_cast<unsigned long>(GetCurrentThreadId());
-#else
-        tls_tid = static_cast<unsigned long>(pthread_self());
-#endif
-    }
-
     const char *last_slash = NULL;
     const char *display_file = NULL;
     char time_buffer[64] = {0};
@@ -114,7 +104,7 @@ void log_default_print(LogArgument *args) {
         char *output_text = NULL;
         raptor_asprintf(&output_text, RAPTOR_LOG_FORMAT, time_buffer,
                         now.tv_usec,  // microseconds
-                        tls_tid, g_level_char[static_cast<int>(args->level)], args->message,
+                        args->threadid, g_level_char[static_cast<int>(args->level)], args->message,
                         display_file, args->line);
         FprintColorTextLine(stderr, fc, bc, output_text);
         free(output_text);
@@ -122,8 +112,8 @@ void log_default_print(LogArgument *args) {
         char buff[2048] = {0};
         snprintf(buff, sizeof(buff), RAPTOR_LOG_FORMAT, time_buffer,
                  now.tv_usec,  // microseconds
-                 tls_tid, g_level_char[static_cast<int>(args->level)], args->message, display_file,
-                 args->line);
+                 args->threadid, g_level_char[static_cast<int>(args->level)], args->message,
+                 display_file, args->line);
         FprintColorTextLine(stderr, fc, bc, buff);
     }
 
@@ -173,6 +163,11 @@ void LogFormatPrint(const char *file, int line, LogLevel level, const char *form
         msg->args.line = line;
         msg->args.level = level;
         msg->args.message = message;
+#ifdef _WIN32
+        msg->args.threadid = static_cast<unsigned long>(GetCurrentThreadId());
+#else
+        msg->args.threadid = static_cast<unsigned long>(pthread_self());
+#endif
         //((LogPrintCallback)g_log_function.Load())(&tmp);
         g_mpscq.push(&msg->node);
     }

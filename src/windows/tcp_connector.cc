@@ -261,7 +261,6 @@ raptor_error TcpConnector::InternalConnect(const raptor_resolved_address *addr, 
     _poll_thread->Add(entry->fd, static_cast<uint64_t>(entry->fd), internal::kConnectEvent);
     _mtex.Unlock();
 
-    log_warn("TcpConnector: First connect %x, threadid=%lu", entry, GetCurrentThreadId());
     ret = _connectex(entry->fd, (raptor_sockaddr *)&mapped_addr.addr, (int)mapped_addr.len, NULL, 0,
                      NULL, &entry->ole.overlapped);
 

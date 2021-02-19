@@ -152,7 +152,7 @@ raptor_error TcpListener::AddListeningPort(const raptor_resolved_address *addr) 
     _poll_thread->Add(listen_fd, static_cast<uint64_t>(listen_fd), internal::kAcceptEvent);
     _mutex.Unlock();
 
-    for (size_t i = 0; i < _threads + 1; i++) {
+    for (int i = 0; i < _threads + 1; i++) {
         struct AcceptObject *node = new AcceptObject;
         node->listen_port = port;
         node->mode = mode;
