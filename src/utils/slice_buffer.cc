@@ -168,12 +168,16 @@ void SliceBuffer::PopBack() {
     }
 }
 
-void SliceBuffer::ForEachSlice(std::function<bool(const Slice &s)> callback) {
+void SliceBuffer::ForEachSlice(std::function<bool(const Slice &s)> callback) const {
     for (size_t i = 0; i < _vs.size(); i++) {
         if (!callback(_vs[i])) {
             break;
         }
     }
+}
+
+const Slice &SliceBuffer::operator[](size_t n) const {
+    return _vs[n];
 }
 
 }  // namespace raptor

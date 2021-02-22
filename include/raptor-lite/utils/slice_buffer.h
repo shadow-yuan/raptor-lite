@@ -51,7 +51,11 @@ public:
     void PopBack();
 
     // callback returns false to interrupt the loop
-    void ForEachSlice(std::function<bool(const Slice &s)> callback);
+    void ForEachSlice(std::function<bool(const Slice &s)> callback) const;
+    const Slice &operator[](size_t n) const;
+    inline const Slice &At(size_t n) const {
+        return this->operator[](n);
+    }
 
 private:
     size_t CopyToBuffer(void *buff, size_t len);
