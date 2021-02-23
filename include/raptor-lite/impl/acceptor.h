@@ -58,7 +58,7 @@ public:
  *   2. ListenThreadNum (optional, default: 1)
  */
 raptor_error CreateAcceptor(const Property &p, Acceptor **out);
-void DestoryAcceptor(Acceptor *);
+void DestroyAcceptor(Acceptor *);
 }  // namespace raptor
 
 #endif  // __RAPTOR_LITE_ACCEPTOR__

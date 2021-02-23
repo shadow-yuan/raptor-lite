@@ -123,8 +123,8 @@ TcpServerTest::TcpServerTest(/* args */) {
 }
 
 TcpServerTest::~TcpServerTest() {
-    raptor::DestoryAcceptor(acceptor);
-    raptor::DestoryContainer(container);
+    raptor::DestroyAcceptor(acceptor);
+    raptor::DestroyContainer(container);
 }
 
 int main() {

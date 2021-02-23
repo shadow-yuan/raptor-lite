@@ -120,8 +120,8 @@ HttpEchoServer::HttpEchoServer(/* args */) {
 }
 
 HttpEchoServer::~HttpEchoServer() {
-    raptor::DestoryAcceptor(acceptor);
-    raptor::DestoryContainer(container);
+    raptor::DestroyAcceptor(acceptor);
+    raptor::DestroyContainer(container);
 }
 
 int main() {

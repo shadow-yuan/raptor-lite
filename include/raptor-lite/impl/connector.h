@@ -63,7 +63,7 @@ public:
  *   3. TcpUserTimeoutMs (optional, default:0)
  */
 raptor_error CreateConnector(const Property &p, Connector **out);
-void DestoryConnector(Connector *);
+void DestroyConnector(Connector *);
 }  // namespace raptor
 
 #endif  // __RAPTOR_LITE_CONNECTOR__

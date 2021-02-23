@@ -90,7 +90,7 @@ raptor_error CreateConnector(const Property &p, Connector **out) {
     return e;
 }
 
-void DestoryConnector(Connector *c) {
+void DestroyConnector(Connector *c) {
     if (c) {
         c->Shutdown();
         delete c;

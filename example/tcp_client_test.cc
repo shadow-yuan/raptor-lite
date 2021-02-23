@@ -79,7 +79,7 @@ ClientHandler ::ClientHandler(/* args */)
     : _ep(nullptr) {}
 
 ClientHandler ::~ClientHandler() {
-    raptor::DestoryConnector(cc);
+    raptor::DestroyConnector(cc);
 }
 
 int main() {

@@ -238,8 +238,8 @@ EchoClient::EchoClient(/* args */) {
 }
 
 EchoClient::~EchoClient() {
-    raptor::DestoryConnector(connector);
-    raptor::DestoryContainer(container);
+    raptor::DestroyConnector(connector);
+    raptor::DestroyContainer(container);
 }
 
 void EchoClient::Dispatch(client_message *msg) {

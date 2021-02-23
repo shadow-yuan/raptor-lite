@@ -110,22 +110,22 @@ raptor_error CreateContainer(const Property &p, Container **out) {
     option.notify_handler =
         reinterpret_cast<EndpointNotifyHandler *>(p.GetValue<intptr_t>("EndpointNotifyHandler", 0));
 
-    option.recv_send_threads            = p.GetValue("RecvSendThreads", 1);
-    option.default_container_size       = p.GetValue("DefaultContainerSize", 256);
-    option.max_container_size           = p.GetValue("MaxContainerSize", 1048576);
+    option.recv_send_threads = p.GetValue("RecvSendThreads", 1);
+    option.default_container_size = p.GetValue("DefaultContainerSize", 256);
+    option.max_container_size = p.GetValue("MaxContainerSize", 1048576);
     option.not_check_connection_timeout = p.GetValue<bool>("NotCheckConnectionTimeout", false);
-    option.connection_timeoutms         = p.GetValue("ConnectionTimeoutMs", 60000);
-    option.mq_consumer_threads          = p.GetValue("MQConsumerThreads", 1);
+    option.connection_timeoutms = p.GetValue("ConnectionTimeoutMs", 60000);
+    option.mq_consumer_threads = p.GetValue("MQConsumerThreads", 1);
 
     ContainerAdaptor *adaptor = new ContainerAdaptor(&option);
-    raptor_error err          = adaptor->Init();
+    raptor_error err = adaptor->Init();
     if (err == RAPTOR_ERROR_NONE) {
         *out = adaptor;
     }
     return err;
 }
 
-void DestoryContainer(Container *cc) {
+void DestroyContainer(Container *cc) {
     if (cc) {
         cc->Shutdown();
         delete cc;

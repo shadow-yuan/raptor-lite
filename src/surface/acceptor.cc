@@ -95,14 +95,14 @@ raptor_error CreateAcceptor(const Property &p, Acceptor **out) {
     }
 
     AcceptorAdaptor *adaptor = new AcceptorAdaptor(handler);
-    raptor_error e           = adaptor->Init(ListenThreadNum);
+    raptor_error e = adaptor->Init(ListenThreadNum);
     if (e == RAPTOR_ERROR_NONE) {
         *out = adaptor;
     }
     return e;
 }
 
-void DestoryAcceptor(Acceptor *a) {
+void DestroyAcceptor(Acceptor *a) {
     if (a) {
         a->Shutdown();
         delete a;

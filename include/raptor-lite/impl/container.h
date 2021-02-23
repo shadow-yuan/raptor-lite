@@ -58,6 +58,6 @@ public:
  *  10. MQConsumerThreads          (optional, default: 1)
  */
 raptor_error CreateContainer(const Property &p, Container **out);
-void DestoryContainer(Container *);
+void DestroyContainer(Container *);
 }  // namespace raptor
 #endif  // __RAPTOR_LITE_CONTAINER__
