@@ -463,13 +463,13 @@ void ContainerImpl::MessageQueueThread(void *) {
         }
         auto n = _mpscq.pop();
         auto msg = reinterpret_cast<struct TcpMessageNode *>(n);
-        RaptorMutexUnlock(_mutex);
 
         if (msg != nullptr) {
             _count.FetchSub(1, MemoryOrder::RELAXED);
             this->Dispatch(msg);
             delete msg;
         }
+        RaptorMutexUnlock(_mutex);
     }
 }
 
